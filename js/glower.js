@@ -12,7 +12,7 @@
         // Active feature
         _af,
         // Down event
-        tileGrid;
+        tileGrid, c, ctx;
 
     // Search through `.tiles` and determine the position,
     // from the top-left of the **document**, and cache that data
@@ -47,7 +47,7 @@
             if ((grid[i][0] < e.y) &&
                ((grid[i][0] + 256) > e.y) &&
                 (grid[i][1] < e.x) &&
-               ((grid[i][1] + 256) > e.x)) return grid[i][2];
+               ((grid[i][1] + 256) > e.x)) return grid[i];
         }
         return false;
     }
@@ -87,12 +87,9 @@
     };
 
     function drawTile(tile, char, grid) {
-      var c = document.createElement('canvas');
       c.width = 256;
-      c.height = 256;
       c.style.cssText = tile.style.cssText;
       var gt = grid.grid_tile();
-      var ctx = c.getContext('2d');
       // ctx.fillRect(0, 0, 256, 256);
       for (var x = 0; x < 64; x++) {
         for (var y = 0; y < 64; y++) {
@@ -168,32 +165,35 @@
         // If the user is actually dragging the map, exit early
         // to avoid performance hits.
         var pos = eventoffset(e),
-            tile = getTile(pos),
+            gt = getTile(pos),
+            tile = gt[2],
             feature;
 
         if (tile) waxGM.getGrid(tile.src, function(err, g) {
             if (err || !g) return;
-            var offset = wax.util.offset(tile);
-            index = g.getKey(pos.x - offset.left, pos.y - offset.top);
-            feature = g.tileFeature(pos.x, pos.y, tile, {
-                format: 'teaser'
-            });
-            if (feature) {
+            index = g.getKey(pos.x - gt[1], pos.y - gt[0]);
+            feature = g.gridFeature(pos.x - gt[1], pos.y - gt[0]);
+            if (!feature) return;
+            var form_feature = waxGM.formatter().format({
+              format: 'teaser'
+            }, feature);
+            if (form_feature) {
                 var char = String.fromCharCode(indexToChar(index));
                 if (char && _af !== char) {
                     _af = feature;
-                    hovertiles.innerHTML = '';
+                    // hovertiles.innerHTML = '';
                     drawTile(tile, char, g);
                     // new feature
                 } else if (!char) {
                     _af = null;
-                    hovertiles.innerHTML = '';
+                    // hovertiles.innerHTML = '';
                     // no feature
                 }
                 // same feature
             } else {
                 _af = null;
-                hovertiles.innerHTML = '';
+                c.width = 256;
+                // hovertiles.innerHTML = '';
                 // no feature
             }
         });
@@ -206,6 +206,10 @@
         for (var i = 0; i < l.length; i++) {
             map.addCallback(l[i], clearTileGrid);
         }
+        c = document.createElement('canvas');
+        c.width = 256;
+        c.height = 256;
+        ctx = c.getContext('2d');
         addEvent(map.parent, 'mousemove', onMove);
         return this;
     };
