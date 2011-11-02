@@ -13,6 +13,13 @@ body {
   height:40px;
 }
 
+#header a {
+  position:absolute;
+  right:20px;
+  top:10px;
+  color:#d8fda9;
+}
+
 #header h1 {
   font-size:20px;
   padding:10px;
