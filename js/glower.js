@@ -39,6 +39,7 @@
     // When the map moves, the tile grid is no longer valid.
     function clearTileGrid(map, e) {
         tileGrid = null;
+        hovertiles.innerHTML = '';
     }
 
     function getTile(e) {
@@ -111,6 +112,8 @@
                 gt.grid[y - 1][x] === char &&
                 gt.grid[y][x - 1] === char) {
               ctx.fillRect((x * 4) - 2, (y * 4) - 2, 2, 2);
+              ctx.fillRect((x * 4) - 1, (y * 4) - 3, 1, 3);
+              ctx.fillRect((x * 4) - 3, (y * 4) - 1, 3, 1);
             }
 
             // + + +          + + +
@@ -122,6 +125,9 @@
                 gt.grid[y + 1][x] === char &&
                 gt.grid[y][x + 1] === char) {
               ctx.fillRect((x * 4) + 4, (y * 4) + 4, 2, 2);
+
+              ctx.fillRect((x * 4) + 4, (y * 4) + 4, 1, 3);
+              ctx.fillRect((x * 4) + 4, (y * 4) + 4, 3, 1);
             }
 
             // + - -          + - -
@@ -133,6 +139,9 @@
                 gt.grid[y - 1][x] === char &&
                 gt.grid[y][x + 1] === char) {
               ctx.fillRect((x * 4) + 4, (y * 4) - 2, 2, 2);
+
+              ctx.fillRect((x * 4) + 4, (y * 4) - 3, 1, 3);
+              ctx.fillRect((x * 4) + 4, (y * 4) - 1, 3, 1);
             }
 
             // + + +          + + +
@@ -144,6 +153,9 @@
                 gt.grid[y + 1][x] === char &&
                 gt.grid[y][x - 1] === char) {
               ctx.fillRect((x * 4) - 2, (y * 4) + 4, 2, 2);
+
+              ctx.fillRect((x * 4) - 1, (y * 4) + 4, 1, 3);
+              ctx.fillRect((x * 4) - 3, (y * 4) + 4, 3, 1);
             }
 
           }
