@@ -11,6 +11,7 @@
         hovertiles = map.parent.appendChild(document.createElement('div')),
         // Active feature
         _af,
+        _cssText,
         // Down event
         tileGrid, c, ctx;
 
@@ -90,7 +91,10 @@
 
     function drawTile(tile, char, grid) {
       c.width = 256;
-      c.style.cssText = tile.style.cssText;
+      var tcss = tile.style.cssText;
+      if (_cssText !== tcss) {
+          _cssText = c.style.cssText = tcss;
+      }
       var gt = grid.grid_tile();
       // ctx.fillRect(0, 0, 256, 256);
       for (var x = 0; x < 64; x++) {
