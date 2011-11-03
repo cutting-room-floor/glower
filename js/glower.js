@@ -1,29 +1,21 @@
 (function(context) {
-  function glower(map, tj) {
-    tilejson = tj;
+  function glower(map, tj, options) {
 
     var MM = com.modestmaps,
-        waxGM = wax.GridManager(tilejson),
+        waxGM = wax.GridManager(tj),
         eventoffset = wax.util.eventoffset,
         addEvent = MM.addEvent,
         removeEvent = MM.removeEvent,
         g = {},
         hovertiles = map.parent.appendChild(document.createElement('div')),
-        // Active feature
-        _af,
+        _af, // active feature
+        to_antialias, // anti-alias timeout
+        to_fulltiles, // anti-alias timeout
         _cssText,
-        // Down event
         tileGrid, c, ctx;
 
-    // Search through `.tiles` and determine the position,
-    // from the top-left of the **document**, and cache that data
-    // so that `mousemove` events don't always recalculate.
     function getTileGrid() {
-        // TODO: don't build for tiles outside of viewport
-        // Touch interaction leads to intermediate
         var zoomLayer = map.createOrGetLayer(Math.round(map.getZoom()));
-        // Calculate a tile grid and cache it, by using the `.tiles`
-        // element on this map.
         return tileGrid || (tileGrid =
             (function(t) {
                 var o = [];
@@ -40,6 +32,7 @@
     // When the map moves, the tile grid is no longer valid.
     function clearTileGrid(map, e) {
         tileGrid = null;
+        _af = null;
         hovertiles.innerHTML = '';
     }
 
@@ -48,36 +41,17 @@
             if ((grid[i][0] < e.y) &&
                ((grid[i][0] + 256) > e.y) &&
                 (grid[i][1] < e.x) &&
-               ((grid[i][1] + 256) > e.x)) return grid[i];
+               ((grid[i][1] + 256) > e.x)) {
+                return grid[i];
+            }
         }
         return false;
     }
 
-    // Clear the double-click timeout to prevent double-clicks from
-    // triggering popups.
-    function killTimeout() {
-        if (_clickTimeout) {
-            window.clearTimeout(_clickTimeout);
-            _clickTimeout = null;
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    // Utility functions to deal with key decoding and encoding
-    // From Wax. Decode a key into an index.
-    var charToIndex = function(key) {
-        if (key >= 93) key--;
-        if (key >= 35) key--;
-        key -= 32;
-        return key;
-    };
-
     // Re-encode a key from an index to a key.
     // This will fail at 34 and 92, control
     // characters that are invalid input anyway.
-    var indexToChar = function(key) {
+    function indexToChar(key) {
         if (key === 34 || key === 92) {
             // console.log('bad key encountered');
         }
@@ -85,104 +59,109 @@
         if (key >= 34) key++;
         if (key >= 92) key++;
         return key;
-    };
-
-    var at;
-
-    function drawTile(tile, char, grid) {
-      c.width = 256;
-      var tcss = tile.style.cssText;
-      if (_cssText !== tcss) {
-          _cssText = c.style.cssText = tcss;
-      }
-      var gt = grid.grid_tile();
-      ctx.fillStyle = 'rgba(11,161,207,0.8)';
-      for (var x = 0; x < 64; x++) {
-        for (var y = 0; y < 64; y++) {
-          if (gt.grid[y][x] === char) {
-            var sweep = 1;
-            while (y < 63 && gt.grid[y + 1][x] === char) {
-              y++;
-              sweep++;
-            }
-            ctx.fillRect(x * 4, (y * 4) - ((sweep - 1) * 4), 4, 4 * sweep);
-          }
-        }
-      }
-      hovertiles.appendChild(c);
-      if (at) window.clearTimeout(at);
-      at = window.setTimeout(function() {
-        aliasTile(tile, char, grid);
-      }, 60);
     }
 
-    function aliasTile(tile, char, grid) {
-      var gt = grid.grid_tile();
-      ctx.fillStyle = 'rgba(11,161,207,0.4)';
-      for (var x = 0; x < 64; x++) {
-        for (var y = 0; y < 64; y++) {
-          if (gt.grid[y][x] === char) {
-            // http://4x86.com/mm-kev.png
-
-            // - - +          - - +
-            // - - +    =>    - + +
-            // + + +          + + +
-            if (x !== 0 &&
-                y !== 0 &&
-                gt.grid[y - 1][x - 1] !== char &&
-                gt.grid[y - 1][x] === char &&
-                gt.grid[y][x - 1] === char) {
-              ctx.fillRect((x * 4) - 2, (y * 4) - 2, 2, 2);
-              ctx.fillRect((x * 4) - 1, (y * 4) - 3, 1, 3);
-              ctx.fillRect((x * 4) - 3, (y * 4) - 1, 3, 1);
-            }
-
-            // + + +          + + +
-            // + - -    =>    + + -
-            // + - -          + - -
-            if (x !== 63 &&
-                y !== 63 &&
-                gt.grid[y + 1][x + 1] !== char &&
-                gt.grid[y + 1][x] === char &&
-                gt.grid[y][x + 1] === char) {
-              ctx.fillRect((x * 4) + 4, (y * 4) + 4, 2, 2);
-
-              ctx.fillRect((x * 4) + 4, (y * 4) + 4, 1, 3);
-              ctx.fillRect((x * 4) + 4, (y * 4) + 4, 3, 1);
-            }
-
-            // + - -          + - -
-            // + - -    =>    + + -
-            // + + +          + + +
-            if (x !== 63 &&
-                y !== 0 &&
-                gt.grid[y - 1][x + 1] !== char &&
-                gt.grid[y - 1][x] === char &&
-                gt.grid[y][x + 1] === char) {
-              ctx.fillRect((x * 4) + 4, (y * 4) - 2, 2, 2);
-
-              ctx.fillRect((x * 4) + 4, (y * 4) - 3, 1, 3);
-              ctx.fillRect((x * 4) + 4, (y * 4) - 1, 3, 1);
-            }
-
-            // + + +          + + +
-            // - - +    =>    - + +
-            // - - +          - - +
-            if (x !== 0 &&
-                y !== 63 &&
-                gt.grid[y + 1][x - 1] !== char &&
-                gt.grid[y + 1][x] === char &&
-                gt.grid[y][x - 1] === char) {
-              ctx.fillRect((x * 4) - 2, (y * 4) + 4, 2, 2);
-
-              ctx.fillRect((x * 4) - 1, (y * 4) + 4, 1, 3);
-              ctx.fillRect((x * 4) - 3, (y * 4) + 4, 3, 1);
-            }
-
-          }
+    function drawFullTiles(key, drawnTile) {
+        hovertiles.innerHTML = '';
+        for (var i = 0, tiles = getTileGrid(); i < tiles.length; i++) {
+            waxGM.getGrid(tiles[i][2].src, (function(tile) {
+                return function(err, g) {
+                    var keyIndex = g.grid_tile().keys.indexOf(key);
+                    if (keyIndex !== -1) {
+                        var char = String.fromCharCode(indexToChar(keyIndex));
+                        drawTile(tile, char, g, true);
+                    }
+                };
+            })(tiles[i][2]));
         }
-      }
-      hovertiles.appendChild(c);
+    }
+
+    function drawTile(tile, char, grid) {
+        var c = document.createElement('canvas');
+        c.style.cssText = tile.style.cssText; // expensive
+        c.width = 256;
+        c.height = 256;
+        var ctx = c.getContext('2d');
+        var gt = grid.grid_tile();
+        ctx.fillStyle = 'rgba(11,161,207,0.8)'; // expensive
+        for (var x = 0; x < 64; x++) {
+            for (var y = 0; y < 64; y++) {
+                if (gt.grid[y][x] === char) {
+                    var sweep = 1;
+                    while (y < 63 && gt.grid[y + 1][x] === char) {
+                        y++;
+                        sweep++;
+                    }
+                    ctx.fillRect(x * 4, (y * 4) - ((sweep - 1) * 4), 4, 4 * sweep);
+                }
+            }
+        }
+        hovertiles.appendChild(c);
+        aliasTile(char, grid, ctx);
+    }
+
+    function aliasTile(char, grid, ctx) {
+        var gt = grid.grid_tile();
+        ctx.fillStyle = 'rgba(11,161,207,0.4)';
+        for (var x = 0; x < 64; x++) {
+            for (var y = 0; y < 64; y++) {
+                if (gt.grid[y][x] === char) {
+                    // http://4x86.com/mm-kev.png
+
+                    // - - +          - - +
+                    // - - +    =>    - + +
+                    // + + +          + + +
+                    if (x !== 0 &&
+                        y !== 0 &&
+                        gt.grid[y - 1][x - 1] !== char &&
+                        gt.grid[y - 1][x] === char &&
+                        gt.grid[y][x - 1] === char) {
+                        ctx.fillRect((x * 4) - 2, (y * 4) - 2, 2, 2);
+                        ctx.fillRect((x * 4) - 1, (y * 4) - 3, 1, 3);
+                        ctx.fillRect((x * 4) - 3, (y * 4) - 1, 3, 1);
+                    }
+
+                    // + + +          + + +
+                    // + - -    =>    + + -
+                    // + - -          + - -
+                    if (x !== 63 &&
+                        y !== 63 &&
+                        gt.grid[y + 1][x + 1] !== char &&
+                        gt.grid[y + 1][x] === char &&
+                        gt.grid[y][x + 1] === char) {
+                        ctx.fillRect((x * 4) + 4, (y * 4) + 4, 2, 2);
+                        ctx.fillRect((x * 4) + 4, (y * 4) + 4, 1, 3);
+                        ctx.fillRect((x * 4) + 4, (y * 4) + 4, 3, 1);
+                    }
+
+                    // + - -          + - -
+                    // + - -    =>    + + -
+                    // + + +          + + +
+                    if (x !== 63 &&
+                        y !== 0 &&
+                        gt.grid[y - 1][x + 1] !== char &&
+                        gt.grid[y - 1][x] === char &&
+                        gt.grid[y][x + 1] === char) {
+                        ctx.fillRect((x * 4) + 4, (y * 4) - 2, 2, 2);
+                        ctx.fillRect((x * 4) + 4, (y * 4) - 3, 1, 3);
+                        ctx.fillRect((x * 4) + 4, (y * 4) - 1, 3, 1);
+                    }
+
+                    // + + +          + + +
+                    // - - +    =>    - + +
+                    // - - +          - - +
+                    if (x !== 0 &&
+                        y !== 63 &&
+                        gt.grid[y + 1][x - 1] !== char &&
+                        gt.grid[y + 1][x] === char &&
+                        gt.grid[y][x - 1] === char) {
+                        ctx.fillRect((x * 4) - 2, (y * 4) + 4, 2, 2);
+                        ctx.fillRect((x * 4) - 1, (y * 4) + 4, 1, 3);
+                        ctx.fillRect((x * 4) - 3, (y * 4) + 4, 3, 1);
+                    }
+                }
+            }
+        }
     }
 
     function onMove(e) {
@@ -193,27 +172,35 @@
             tile = gt[2],
             feature;
 
-        if (tile) waxGM.getGrid(tile.src, function(err, g) {
-            if (err || !g) return;
-            index = g.getKey(pos.x - gt[1], pos.y - gt[0]);
-            feature = g.gridFeature(pos.x - gt[1], pos.y - gt[0]);
-            if (!feature) return;
-            if (feature) {
-                var char = String.fromCharCode(indexToChar(index));
-                if (char && _af !== char) {
-                    _af = char;
-                    drawTile(tile, char, g);
-                } else if (!char) {
+        if (tile) {
+            waxGM.getGrid(tile.src, function(err, g) {
+                if (err || !g) return;
+                var keyIndex = g.getKey(pos.x - gt[1], pos.y - gt[0]);
+                var key = g.grid_tile().keys[keyIndex];
+                feature = g.gridFeature(pos.x - gt[1], pos.y - gt[0]);
+                if (feature) {
+                    var char = String.fromCharCode(indexToChar(keyIndex));
+                    if (char && _af !== key) {
+                        _af = key;
+                        hovertiles.innerHTML = '';
+                        drawTile(tile, char, g);
+
+                        if (to_fulltiles) window.clearTimeout(to_fulltiles);
+                        to_fulltiles = window.setTimeout((function(key) {
+                            return function() {
+                                drawFullTiles(key);
+                            }
+                        })(key), 20);
+                    } else {
+                        // hovertiles.innerHTML = '';
+                    }
+                } else {
+                    // no feature
                     _af = null;
+                    hovertiles.innerHTML = '';
                 }
-                // same feature
-            } else {
-                _af = null;
-                c.width = 256;
-                // hovertiles.innerHTML = '';
-                // no feature
-            }
-        });
+            });
+        }
     }
 
     // Attach listeners to the map
@@ -223,10 +210,6 @@
         for (var i = 0; i < l.length; i++) {
             map.addCallback(l[i], clearTileGrid);
         }
-        c = document.createElement('canvas');
-        c.width = 256;
-        c.height = 256;
-        ctx = c.getContext('2d');
         addEvent(map.parent, 'mousemove', onMove);
         return this;
     };
