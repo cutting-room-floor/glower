@@ -86,6 +86,8 @@
         return key;
     };
 
+    var at;
+
     function drawTile(tile, char, grid) {
       c.width = 256;
       c.style.cssText = tile.style.cssText;
@@ -96,7 +98,22 @@
           if (gt.grid[y][x] === char) {
             ctx.fillStyle = 'rgba(11,161,207,0.8)';
             ctx.fillRect(x * 4, y * 4, 4, 4);
+          }
+        }
+      }
+      hovertiles.appendChild(c);
+      if (at) window.clearTimeout(at);
+      at = window.setTimeout(function() {
+        aliasTile(tile, char, grid);
+      }, 60);
+    }
 
+    function aliasTile(tile, char, grid) {
+      var gt = grid.grid_tile();
+      // ctx.fillRect(0, 0, 256, 256);
+      for (var x = 0; x < 64; x++) {
+        for (var y = 0; y < 64; y++) {
+          if (gt.grid[y][x] === char) {
             // http://4x86.com/mm-kev.png
             ctx.fillStyle = 'rgba(11,161,207,0.4)';
 
@@ -174,20 +191,13 @@
             index = g.getKey(pos.x - gt[1], pos.y - gt[0]);
             feature = g.gridFeature(pos.x - gt[1], pos.y - gt[0]);
             if (!feature) return;
-            var form_feature = waxGM.formatter().format({
-              format: 'teaser'
-            }, feature);
-            if (form_feature) {
+            if (feature) {
                 var char = String.fromCharCode(indexToChar(index));
                 if (char && _af !== char) {
-                    _af = feature;
-                    // hovertiles.innerHTML = '';
+                    _af = char;
                     drawTile(tile, char, g);
-                    // new feature
                 } else if (!char) {
                     _af = null;
-                    // hovertiles.innerHTML = '';
-                    // no feature
                 }
                 // same feature
             } else {
