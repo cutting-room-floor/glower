@@ -96,12 +96,16 @@
           _cssText = c.style.cssText = tcss;
       }
       var gt = grid.grid_tile();
-      // ctx.fillRect(0, 0, 256, 256);
+      ctx.fillStyle = 'rgba(11,161,207,0.8)';
       for (var x = 0; x < 64; x++) {
         for (var y = 0; y < 64; y++) {
           if (gt.grid[y][x] === char) {
-            ctx.fillStyle = 'rgba(11,161,207,0.8)';
-            ctx.fillRect(x * 4, y * 4, 4, 4);
+            var sweep = 1;
+            while (y < 63 && gt.grid[y + 1][x] === char) {
+              y++;
+              sweep++;
+            }
+            ctx.fillRect(x * 4, (y * 4) - ((sweep - 1) * 4), 4, 4 * sweep);
           }
         }
       }
@@ -114,12 +118,11 @@
 
     function aliasTile(tile, char, grid) {
       var gt = grid.grid_tile();
-      // ctx.fillRect(0, 0, 256, 256);
+      ctx.fillStyle = 'rgba(11,161,207,0.4)';
       for (var x = 0; x < 64; x++) {
         for (var y = 0; y < 64; y++) {
           if (gt.grid[y][x] === char) {
             // http://4x86.com/mm-kev.png
-            ctx.fillStyle = 'rgba(11,161,207,0.4)';
 
             // - - +          - - +
             // - - +    =>    - + +
