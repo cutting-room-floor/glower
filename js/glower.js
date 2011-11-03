@@ -101,7 +101,7 @@
             }
         }
         hovertiles.appendChild(c);
-        // aliasTile(char, grid, ctx);
+        aliasTile(char, grid, ctx);
     }
 
     function aliasTile(char, grid, ctx) {
