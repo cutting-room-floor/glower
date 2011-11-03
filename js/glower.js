@@ -16,6 +16,7 @@
         _cssText,
         fillStyle,
         aliasStyle,
+        _downLock = false,
         tileGrid, c, ctx;
 
     function getTileGrid() {
@@ -168,7 +169,16 @@
         }
     }
 
+    function onDown() {
+        _downLock = true;
+    }
+
+    function onUp() {
+        _downLock = false;
+    }
+
     function onMove(e) {
+        if (_downLock) return;
         // If the user is actually dragging the map, exit early
         // to avoid performance hits.
         var pos = eventoffset(e),
@@ -223,6 +233,8 @@
             map.addCallback(l[i], clearTileGrid);
         }
         addEvent(map.parent, 'mousemove', onMove);
+        addEvent(map.parent, 'mousedown', onDown);
+        addEvent(map.parent, 'mouseup', onUp);
 
         this.fillStyle(options.fillStyle || 'rgba(11,161,207,0.8)');
         return this;
