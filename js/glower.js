@@ -211,7 +211,7 @@
         if (!x) return fillStyle;
         fillStyle = x;
         aliasStyle = x.replace(/([\d\.]+)\)$/, function(m) {
-            return (parseFloat(m) / 3) + ')';
+            return (parseFloat(m) / 1.5) + ')';
         });
     };
 
