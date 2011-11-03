@@ -1,5 +1,7 @@
 (function(context) {
-  function glower(map, tj, options) {
+    function glower(map, tj, options) {
+
+    options = options || {};
 
     var MM = com.modestmaps,
         waxGM = wax.GridManager(tj),
@@ -12,6 +14,8 @@
         to_antialias, // anti-alias timeout
         to_fulltiles, // anti-alias timeout
         _cssText,
+        fillStyle,
+        aliasStyle,
         tileGrid, c, ctx;
 
     function getTileGrid() {
@@ -83,7 +87,7 @@
         c.height = 256;
         var ctx = c.getContext('2d');
         var gt = grid.grid_tile();
-        ctx.fillStyle = 'rgba(11,161,207,0.8)'; // expensive
+        ctx.fillStyle = fillStyle; // expensive
         for (var x = 0; x < 64; x++) {
             for (var y = 0; y < 64; y++) {
                 if (gt.grid[y][x] === char) {
@@ -102,7 +106,7 @@
 
     function aliasTile(char, grid, ctx) {
         var gt = grid.grid_tile();
-        ctx.fillStyle = 'rgba(11,161,207,0.4)';
+        ctx.fillStyle = aliasStyle;
         for (var x = 0; x < 64; x++) {
             for (var y = 0; y < 64; y++) {
                 if (gt.grid[y][x] === char) {
@@ -203,6 +207,14 @@
         }
     }
 
+    g.fillStyle = function(x) {
+        if (!x) return fillStyle;
+        fillStyle = x;
+        aliasStyle = x.replace(/([\d\.]+)\)$/, function(m) {
+            return (parseFloat(m) / 3) + ')';
+        });
+    };
+
     // Attach listeners to the map
     g.add = function() {
         var l = ['zoomed', 'panned', 'centered',
@@ -211,6 +223,8 @@
             map.addCallback(l[i], clearTileGrid);
         }
         addEvent(map.parent, 'mousemove', onMove);
+
+        this.fillStyle(options.fillStyle || 'rgba(11,161,207,0.8)');
         return this;
     };
 

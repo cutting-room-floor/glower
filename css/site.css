@@ -40,3 +40,10 @@ body {
   padding:10px;
   left:200px;
 }
+
+#swatch {
+  position:absolute;
+  bottom:10px;
+  right:10px;
+  z-index:100;
+}
