@@ -11,7 +11,8 @@
       <link href='css/site.css' type='text/css' rel='stylesheet' />
     </head>
     <body>
-      <div id='header'><h1>Glower</h1>
+      <div id='header'>
+        <h1>Glower</h1>
         <a href='http://tiles.mapbox.com/energy/map/billion-ton-update-biomass-production-by-county-v3'>Map by the Energy Department, hosted on MapBox Hosting and designed in TileMill.</a></div>
       <div id='swatch'>
         <a href='#' id='red'>red</a>,
@@ -19,6 +20,24 @@
         <a href='#' id='blue'>blue</a>
       </div>
       <div id='map'></div>
+      <div id='sidebar'>
+        <h3>How Does It Work?</h3>
+        <p>There are plenty of ways to skin this cat. At
+        <a href='http://mapbox.com/'>MapBox</a> we use <a href='http://developmentseed.org/blog/2011/sep/07/see-how-utfgrid-works-visible-map/'>UTFGrid</a>,
+        a system of making maps interactive that is <em>super-fast, flexible, and
+          compatible with older browsers</em> - even Internet Explorer.</p>
+        <p>This means that we <em>don't send vector data to the browser</em>:
+        we send <em>rasterized interaction data</em> that describes where features
+        are.</p>
+        <p>But we can still do some fancy interaction. Glower does <em>feature highlighting</em>
+        by rendering lines of pixels with <a href='http://en.wikipedia.org/wiki/Canvas_element'>Canvas</a>.
+        It can do the outlines of any feature type - polygons, lines, and points, and
+        on <em>any existing map from MapBox</em> <a href='http://tiles.mapbox.com/'>hosted on
+          MapBox Hosting</a>.
+        </p>
+        <h4><a href='https://github.com/mapbox/glower'>Get Glower on GitHub</a></h4>
+        <small>glower is open source BSD licensed.<br />It's built on <a href='https://github.com/mapbox/utfgrid-spec'>open specs</a> and <a href='https://github.com/mapnik/mapnik'>open implementations.</a></small>
+      </div>
       <script type="text/javascript">
   var _gauges = _gauges || [];
   (function() {

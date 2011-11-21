@@ -33,12 +33,63 @@ body {
   bottom:0;
 }
 
+#sidebar {
+  position:absolute;
+  top:40px;
+  width:400px;
+  bottom:0;
+  opacity:0.9;
+  background:#222;
+  color:#eee;
+}
+
+h3 {
+  padding:10px;
+}
+
+pre {
+  font: monospace;
+  padding:5px 10px;
+  color:#d8fda9;
+  background:#444;
+}
+
+a {
+  color:#d8fda9;
+}
+
+a:hover {
+  color:#26aeaf;
+}
+
+em {
+  color:#d8fda9;
+}
+
+h4 {
+  background:#444444;
+  padding:10px;
+  font:25px/40px 'Helvetica Neue', sans-serif;
+  text-align:center;
+}
+
+small {
+  display:block;
+  text-align:center;
+}
+
+#sidebar p {
+  padding:5px 10px;
+  font:14px/25px 'Georgia' serif;
+  color:#eee;
+}
+
 .wax-tooltip {
   background:#f7ffee;
   position:absolute;
   bottom:0;
   padding:10px;
-  left:200px;
+  left:300px;
 }
 
 #swatch {

@@ -55,7 +55,7 @@
 
     // Re-encode a key from an index to a key.
     // This will fail at 34 and 92, control
-    // characters that are invalid input anyway.
+    // chacters that are invalid input anyway.
     function indexToChar(key) {
         if (key === 34 || key === 92) {
             // console.log('bad key encountered');
@@ -73,15 +73,15 @@
                 return function(err, g) {
                     var keyIndex = g.grid_tile().keys.indexOf(key);
                     if (keyIndex !== -1) {
-                        var char = String.fromCharCode(indexToChar(keyIndex));
-                        drawTile(tile, char, g, true);
+                        var ch = String.fromCharCode(indexToChar(keyIndex));
+                        drawTile(tile, ch, g, true);
                     }
                 };
             })(tiles[i][2]));
         }
     }
 
-    function drawTile(tile, char, grid) {
+    function drawTile(tile, ch, grid) {
         var c = document.createElement('canvas');
         c.style.cssText = tile.style.cssText; // expensive
         c.width = 256;
@@ -91,9 +91,9 @@
         ctx.fillStyle = fillStyle; // expensive
         for (var x = 0; x < 64; x++) {
             for (var y = 0; y < 64; y++) {
-                if (gt.grid[y][x] === char) {
+                if (gt.grid[y][x] === ch) {
                     var sweep = 1;
-                    while (y < 63 && gt.grid[y + 1][x] === char) {
+                    while (y < 63 && gt.grid[y + 1][x] === ch) {
                         y++;
                         sweep++;
                     }
@@ -102,15 +102,15 @@
             }
         }
         hovertiles.appendChild(c);
-        aliasTile(char, grid, ctx);
+        aliasTile(ch, grid, ctx);
     }
 
-    function aliasTile(char, grid, ctx) {
+    function aliasTile(ch, grid, ctx) {
         var gt = grid.grid_tile();
         ctx.fillStyle = aliasStyle;
         for (var x = 0; x < 64; x++) {
             for (var y = 0; y < 64; y++) {
-                if (gt.grid[y][x] === char) {
+                if (gt.grid[y][x] === ch) {
                     // http://4x86.com/mm-kev.png
 
                     // - - +          - - +
@@ -118,9 +118,9 @@
                     // + + +          + + +
                     if (x !== 0 &&
                         y !== 0 &&
-                        gt.grid[y - 1][x - 1] !== char &&
-                        gt.grid[y - 1][x] === char &&
-                        gt.grid[y][x - 1] === char) {
+                        gt.grid[y - 1][x - 1] !== ch &&
+                        gt.grid[y - 1][x] === ch &&
+                        gt.grid[y][x - 1] === ch) {
                         ctx.fillRect((x * 4) - 2, (y * 4) - 2, 2, 2);
                         ctx.fillRect((x * 4) - 1, (y * 4) - 3, 1, 3);
                         ctx.fillRect((x * 4) - 3, (y * 4) - 1, 3, 1);
@@ -131,9 +131,9 @@
                     // + - -          + - -
                     if (x !== 63 &&
                         y !== 63 &&
-                        gt.grid[y + 1][x + 1] !== char &&
-                        gt.grid[y + 1][x] === char &&
-                        gt.grid[y][x + 1] === char) {
+                        gt.grid[y + 1][x + 1] !== ch &&
+                        gt.grid[y + 1][x] === ch &&
+                        gt.grid[y][x + 1] === ch) {
                         ctx.fillRect((x * 4) + 4, (y * 4) + 4, 2, 2);
                         ctx.fillRect((x * 4) + 4, (y * 4) + 4, 1, 3);
                         ctx.fillRect((x * 4) + 4, (y * 4) + 4, 3, 1);
@@ -144,9 +144,9 @@
                     // + + +          + + +
                     if (x !== 63 &&
                         y !== 0 &&
-                        gt.grid[y - 1][x + 1] !== char &&
-                        gt.grid[y - 1][x] === char &&
-                        gt.grid[y][x + 1] === char) {
+                        gt.grid[y - 1][x + 1] !== ch &&
+                        gt.grid[y - 1][x] === ch &&
+                        gt.grid[y][x + 1] === ch) {
                         ctx.fillRect((x * 4) + 4, (y * 4) - 2, 2, 2);
                         ctx.fillRect((x * 4) + 4, (y * 4) - 3, 1, 3);
                         ctx.fillRect((x * 4) + 4, (y * 4) - 1, 3, 1);
@@ -157,9 +157,9 @@
                     // - - +          - - +
                     if (x !== 0 &&
                         y !== 63 &&
-                        gt.grid[y + 1][x - 1] !== char &&
-                        gt.grid[y + 1][x] === char &&
-                        gt.grid[y][x - 1] === char) {
+                        gt.grid[y + 1][x - 1] !== ch &&
+                        gt.grid[y + 1][x] === ch &&
+                        gt.grid[y][x - 1] === ch) {
                         ctx.fillRect((x * 4) - 2, (y * 4) + 4, 2, 2);
                         ctx.fillRect((x * 4) - 1, (y * 4) + 4, 1, 3);
                         ctx.fillRect((x * 4) - 3, (y * 4) + 4, 3, 1);
@@ -193,11 +193,11 @@
                 var key = g.grid_tile().keys[keyIndex];
                 feature = g.gridFeature(pos.x - gt[1], pos.y - gt[0]);
                 if (feature) {
-                    var char = String.fromCharCode(indexToChar(keyIndex));
-                    if (char && _af !== key) {
+                    var ch = String.fromCharCode(indexToChar(keyIndex));
+                    if (ch && _af !== key) {
                         _af = key;
                         hovertiles.innerHTML = '';
-                        drawTile(tile, char, g);
+                        drawTile(tile, ch, g);
 
                         if (to_fulltiles) window.clearTimeout(to_fulltiles);
                         to_fulltiles = window.setTimeout((function(key) {
