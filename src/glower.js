@@ -1,10 +1,9 @@
 var glower = {
     drawTile: function (o) {
         var c = document.createElement('canvas');
-        var off = wax.util.offset(o.tile);
         c.style.position = 'absolute';
-        c.style.left = off.left + 'px';
-        c.style.top = off.top + 'px';
+        c.style.left = o.tile[3].left + 'px';
+        c.style.top = o.tile[3].top + 'px';
         c.width = 256;
         c.height = 256;
         var ctx = c.getContext('2d'),

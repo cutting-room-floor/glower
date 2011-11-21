@@ -21,15 +21,22 @@ if (!glower) throw new Error('glower base library required');
             _downLock = false,
             tileGrid, c, ctx;
 
+        hovertiles.style.cssText = 'position:absolute;top:0;left:0;';
+
         function getTileGrid() {
             var zoomLayer = map.createOrGetLayer(Math.round(map.getZoom()));
+            var mo = wax.util.offset(map.parent);
             return tileGrid || (tileGrid =
                 (function(t) {
                     var o = [];
                     for (var key in t) {
                         if (t[key].parentNode === zoomLayer) {
                             var offset = wax.util.offset(t[key]);
-                            o.push([offset.top, offset.left, t[key]]);
+                            var mapoffset = {
+                                left: offset.left - mo.left,
+                                top: offset.top - mo.top
+                            };
+                            o.push([offset.top, offset.left, t[key], mapoffset]);
                         }
                     }
                     return o;
@@ -63,6 +70,7 @@ if (!glower) throw new Error('glower base library required');
                         var keyIndex = g.grid_tile().keys.indexOf(key);
                         if (keyIndex !== -1) {
                             var ch = String.fromCharCode(lib.indexToChar(keyIndex));
+
                             lib.drawTile({
                                 tile: tile,
                                 ch: ch,
@@ -72,7 +80,7 @@ if (!glower) throw new Error('glower base library required');
                             });
                         }
                     };
-                })(tiles[i][2]));
+                })(tiles[i]));
             }
         }
 
@@ -105,7 +113,7 @@ if (!glower) throw new Error('glower base library required');
                             _af = key;
                             hovertiles.innerHTML = '';
                             lib.drawTile({
-                                tile: tile,
+                                tile: gt,
                                 ch: ch,
                                 grid: g,
                                 container: hovertiles,

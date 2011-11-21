@@ -16,10 +16,7 @@ if (!glower) throw new Error('glower base library required');
             aliasStyle,
             _downLock = false,
             tileGrid, c, ctx;
-        hovertiles.style.position = 'absolute';
-        hovertiles.style.left = '0px';
-        hovertiles.style.top = '0px';
-        hovertiles.style.zIndex = 10000020;
+        hovertiles.style.cssText = 'position:absolute;top:0;left:0;z-index:1000020;';
 
         // Search through `.tiles` and determine the position,
         // from the top-left of the **document**, and cache that data
@@ -39,9 +36,12 @@ if (!glower) throw new Error('glower base library required');
                         if (key.split('/')[0] != zoom) continue;
                         var tileOffset = wax.util.offset(mapType.cache[key]);
                         tileGrid.push([
-                            tileOffset.top - mapOffset.top,
-                            tileOffset.left - mapOffset.left,
-                            mapType.cache[key]
+                            tileOffset.top,
+                            tileOffset.left,
+                            mapType.cache[key], {
+                                top:  tileOffset.top - mapOffset.top,
+                                left: tileOffset.left - mapOffset.left
+                            }
                         ]);
                     }
                 }, this);
@@ -60,6 +60,11 @@ if (!glower) throw new Error('glower base library required');
         }
 
         function getTile(evt) {
+            if (!evt.pixel) {
+                evt.pixel = wax.util.eventoffset(evt);
+                evt.pixel.x = evt.pixel.left;
+                evt.pixel.y = evt.pixel.top;
+            }
             var tile;
             var grid = getTiles();
             for (var i = 0; i < grid.length; i++) {
@@ -90,7 +95,7 @@ if (!glower) throw new Error('glower base library required');
                             });
                         }
                     };
-                })(tiles[i][2]));
+                })(tiles[i]));
             }
         }
 
@@ -103,6 +108,9 @@ if (!glower) throw new Error('glower base library required');
         }
 
         function onMove(e) {
+            if (!e.pixel) {
+                e.pixel = wax.util.eventoffset(e);
+            }
             if (_downLock) return;
             // If the user is actually dragging the map, exit early
             // to avoid performance hits.
@@ -122,7 +130,7 @@ if (!glower) throw new Error('glower base library required');
                             _af = key;
                             hovertiles.innerHTML = '';
                             lib.drawTile({
-                                tile: tile,
+                                tile: gt,
                                 ch: ch,
                                 grid: g,
                                 container: hovertiles,
@@ -152,10 +160,25 @@ if (!glower) throw new Error('glower base library required');
             fillStyle = x;
         };
 
+        // see http://ejohn.org/apps/jselect/event.html for the originals
+        function addEvent(obj, type, fn) {
+            if (obj.addEventListener) {
+                obj.addEventListener(type, fn, false);
+                if (type == 'mousewheel') {
+                    obj.addEventListener('DOMMouseScroll', fn, false);
+                }
+            } else if (obj.attachEvent) {
+                obj['e'+type+fn] = fn;
+                obj[type+fn] = function(){ obj['e'+type+fn](window.event); };
+                obj.attachEvent('on'+type, obj[type+fn]);
+            }
+        }
+
         // Attach listeners to the map
         g.add = function() {
             google.maps.event.addListener(map, 'idle', clearTileGrid);
             google.maps.event.addListener(map, 'mousemove', onMove);
+            addEvent(hovertiles, 'mousemove', onMove);
             this.fillStyle(options.fillStyle || 'rgba(11,161,207,0.8)');
             return this;
         };

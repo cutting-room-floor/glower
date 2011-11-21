@@ -70,6 +70,7 @@ h4 {
   background:#444444;
   padding:10px;
   font:25px/40px 'Helvetica Neue', sans-serif;
+  margin-top:20px;
   text-align:center;
 }
 
@@ -128,6 +129,10 @@ small {
 }
 
 .apis a {
-  font:25px/30px 'Helvetica Neue', sans-serif;
+  font:15/20px 'Helvetica Neue', sans-serif;
+  background:#7DC74C;
+  border-radius:2px;
+  text-decoration:none;
+  color:#000;
   padding:10px;
 }

@@ -69,5 +69,5 @@ $.domReady(function() {
     mapG();
   });
 
-  $('#g').click();
+  $('#mm').click();
 });
