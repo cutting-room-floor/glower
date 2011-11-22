@@ -1,6 +1,9 @@
 var glower = {
     drawTile: function (o) {
         var c = document.createElement('canvas');
+        if (typeof G_vmlCanvasManager !== 'undefined') {
+          G_vmlCanvasManager.initElement(c);
+        }
         c.style.position = 'absolute';
         c.style.left = o.tile[3].left + 'px';
         c.style.top = o.tile[3].top + 'px';
