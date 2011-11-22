@@ -39,17 +39,19 @@ body {
   width:400px;
   bottom:0;
   opacity:0.9;
+  overflow:auto;
   background:#222;
   color:#eee;
 }
 
 h3 {
   padding:10px;
+  background:#111;
 }
 
 pre {
-  font: monospace;
-  padding:5px 10px;
+  font: 14px/16px monospace;
+  padding:10px 10px;
   color:#d8fda9;
   background:#444;
 }
@@ -62,11 +64,15 @@ a:hover {
   color:#26aeaf;
 }
 
-em {
+em, code {
   color:#d8fda9;
 }
 
-h4 {
+code {
+  font-family:monospace;
+}
+
+h4.download {
   background:#444444;
   padding:10px;
   font:25px/40px 'Helvetica Neue', sans-serif;
@@ -126,6 +132,7 @@ small {
 .apis {
   color:#fff;
   padding:10px;
+  margin-bottom:10px;
 }
 
 .apis a {
@@ -136,3 +143,27 @@ small {
   color:#000;
   padding:10px;
 }
+
+/* Special sauce */
+::-webkit-scrollbar {
+  height:8px;
+  width:10px;
+  background:#111;
+  border-radius:2px;
+  }
+
+::-webkit-scrollbar:hover {
+  background:#111;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background:#d8fda9;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius:2px;
+  background:#7DC74C;
+  }
+
+::-webkit-scrollbar-thumb:vertical { height:25px; }
+::-webkit-scrollbar-thumb:horizontal { width:25px; }

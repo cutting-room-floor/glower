@@ -1,21 +1,20 @@
 if (!glower) throw new Error('glower base library required');
 
 (function(lib) {
-    function glower(map, tj, options) {
+    function glower_g(map, tj, options) {
 
         options = options || {};
 
         var waxGM = wax.GridManager(tj),
             eventoffset = wax.util.eventoffset,
-            e = {},
             hovertiles = map.getDiv().appendChild(document.createElement('div')),
             _af, // active feature
-            to_antialias, // anti-alias timeout
             to_fulltiles, // anti-alias timeout
             fillStyle,
             aliasStyle,
             _downLock = false,
             tileGrid, c, ctx;
+
         hovertiles.style.cssText = 'position:absolute;top:0;left:0;z-index:1000020;';
 
         // Search through `.tiles` and determine the position,
@@ -61,9 +60,7 @@ if (!glower) throw new Error('glower base library required');
 
         function getTile(evt) {
             if (!evt.pixel) {
-                evt.pixel = wax.util.eventoffset(evt);
-                evt.pixel.x = evt.pixel.left;
-                evt.pixel.y = evt.pixel.top;
+                evt.pixel = eventoffset(evt);
             }
             var tile;
             var grid = getTiles();
@@ -99,32 +96,22 @@ if (!glower) throw new Error('glower base library required');
             }
         }
 
-        function onDown() {
-            _downLock = true;
-        }
-
-        function onUp() {
-            _downLock = false;
-        }
-
         function onMove(e) {
             if (!e.pixel) {
-                e.pixel = wax.util.eventoffset(e);
+                e.pixel = eventoffset(e);
             }
             if (_downLock) return;
             // If the user is actually dragging the map, exit early
             // to avoid performance hits.
             var gt = getTile(e),
-                tile = gt[2],
-                feature;
+                tile = gt[2];
 
             if (tile) {
                 waxGM.getGrid(tile.src, function(err, g) {
                     if (err || !g) return;
                     var keyIndex = g.getKey(e.pixel.x - gt[1], e.pixel.y - gt[0]);
                     var key = g.grid_tile().keys[keyIndex];
-                    feature = g.gridFeature(e.pixel.x - gt[1], e.pixel.y - gt[0]);
-                    if (feature) {
+                    if (g.gridFeature(e.pixel.x - gt[1], e.pixel.y - gt[0])) {
                         var ch = String.fromCharCode(lib.indexToChar(keyIndex));
                         if (ch && _af !== key) {
                             _af = key;
@@ -186,5 +173,5 @@ if (!glower) throw new Error('glower base library required');
         // Ensure chainability
         return g.add(map);
   }
-  lib.g = glower;
+  lib.g = glower_g;
 })(glower);

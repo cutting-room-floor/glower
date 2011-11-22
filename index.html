@@ -51,7 +51,29 @@
           <a id='mm' href='#'>Modest Maps</a>
           <a id='g' href='#'>Google Maps (alpha)</a>
         </div>
-        <h4><a href='https://github.com/mapbox/glower'>Get Glower on GitHub</a></h4>
+        <h3>Using Glower</h3>
+        <p>
+        You use Glower like you'd use the
+        <a href="http://mapbox.com/wax/interaction-mm.html">Wax Interaction</a>
+        control:
+        </p>
+<pre>
+// Modest Maps
+var myglower = glower.mm(
+  map, // a modest maps map object
+  tilejson // a tilejson object
+);
+
+// Google Maps API v3
+var myglower = glower.g(
+  map, // a google map object
+  tilejson // a tilejson object
+);
+</pre>
+        <p>You'll need two files: <code>glower.js</code> and 
+        <code>glower.mm.js</code> or <code>glower.g.js</code>:
+        Google is g, and Modest Maps is mm.</p>
+        <h4 class='download'><a href='https://github.com/mapbox/glower/zipball/gh-pages'>download glower.zip</a><br /><a href='https://github.com/mapbox/glower'>Get Glower on GitHub</a></h4>
         <small>glower is open source BSD licensed.<br />It's built on <a href='https://github.com/mapbox/utfgrid-spec'>open specs</a> and <a href='https://github.com/mapnik/mapnik'>open implementations.</a></small>
       </div>
       <script type="text/javascript">
