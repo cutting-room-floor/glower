@@ -67,19 +67,18 @@ if (!glower) throw new Error('glower base library required');
             for (var i = 0, tiles = getTileGrid(); i < tiles.length; i++) {
                 waxGM.getGrid(tiles[i][2].src, (function(tile) {
                     return function(err, g) {
-                        if (g.grid_tile().keys) {
-                          var keyIndex = wax.util.indexOf(g.grid_tile().keys, key);
-                          if (keyIndex !== -1) {
-                              var ch = String.fromCharCode(lib.indexToChar(keyIndex));
+                        if (err || !g.grid_tile()) return;
+                        var keyIndex = wax.util.indexOf(g.grid_tile().keys, key);
+                        if (keyIndex !== -1) {
+                            var ch = String.fromCharCode(lib.indexToChar(keyIndex));
 
-                              lib.drawTile({
-                                  tile: tile,
-                                  ch: ch,
-                                  grid: g,
-                                  container: hovertiles,
-                                  fillStyle: fillStyle
-                              });
-                          }
+                            lib.drawTile({
+                                tile: tile,
+                                ch: ch,
+                                grid: g,
+                                container: hovertiles,
+                                fillStyle: fillStyle
+                            });
                         }
                     };
                 })(tiles[i]));
