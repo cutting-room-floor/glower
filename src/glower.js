@@ -28,7 +28,8 @@ var glower = {
         o.aliasStyle = o.fillStyle.replace(/([\d\.]+)\)$/, function(m) {
             return (parseFloat(m) / 1.5) + ')';
         });
-        return this.aliasTile(o, ctx);
+        // return this.aliasTile(o, ctx).strokeTile(o, ctx, c);
+        return this.strokeTile(o, ctx, c);
     },
     // Re-encode a key from an index to a key.
     // This will fail at 34 and 92, control
@@ -102,6 +103,33 @@ var glower = {
                 }
             }
         }
+        return this;
+    },
+    strokeTile: function(o, ctx, c) {
+        var gt = o.grid.grid_tile();
+        ctx.globalAlpha = 0.7;
+        ctx.globalCompositeOperation = 'lighter';
+        var a = 1;
+        ctx.drawImage(c, -a, -a);
+        ctx.drawImage(c, a, a);
+        ctx.drawImage(c, 0, -a);
+        ctx.drawImage(c, -a, 0);
+        ctx.globalAlpha = 1;
+        /*
+        ctx.fillStyle = o.strokeStyle; // expensive
+        for (var x = 0; x < 64; x++) {
+            for (var y = 0; y < 64; y++) {
+                if (gt.grid[y][x] === o.ch) {
+                    var sweep = 1;
+                    while (y < 63 && gt.grid[y + 1][x] === o.ch) {
+                        y++;
+                        sweep++;
+                    }
+                    ctx.fillRect((x * 4) - 2, ((y * 4) - (sweep - 1) * 4) - 2, 8, (4 * sweep) + 4);
+                }
+            }
+        }
+        */
         return this;
     }
 };

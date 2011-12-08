@@ -68,7 +68,6 @@ if (!glower) throw new Error('glower base library required');
                 waxGM.getGrid(tiles[i][2].src, (function(tile) {
                     return function(err, g) {
                         if (err || !g.grid_tile()) {
-                          alert('early exit');
                           return;
                         }
                         var keyIndex = wax.util.indexOf(g.grid_tile().keys, key);
@@ -109,6 +108,7 @@ if (!glower) throw new Error('glower base library required');
                 waxGM.getGrid(tile.src, function(err, g) {
                     if (err || !g) return;
                     var keyIndex = g.getKey(pos.x - gt[1], pos.y - gt[0]);
+                    if (!g.grid_tile()) return;
                     var key = g.grid_tile().keys[keyIndex];
                     feature = g.gridFeature(pos.x - gt[1], pos.y - gt[0]);
                     if (feature) {
