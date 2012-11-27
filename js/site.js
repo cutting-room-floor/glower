@@ -1,4 +1,4 @@
-var mm = com.modestmaps, map;
+var mm = com.modestmaps, map, glow;
 $.domReady(function() {
   function mapMM() {
     $('#map')[0].innerHTML = '';
@@ -7,7 +7,7 @@ $.domReady(function() {
         map = new mm.Map('map', new wax.mm.connector(tj));
         // wax.mm.interaction(map, tj, {clickAction: []});
         map.setCenterZoom(new mm.Location(38.376115424036016, -97.11914062499999), 5);
-        var glow = glower.mm(map, tj);
+        glow = glower.mm(map, tj);
     });
   }
 
@@ -26,17 +26,17 @@ $.domReady(function() {
       // layers and you won't see Google tiles
       map.mapTypes.set('mb', new wax.g.connector(tj));
       map.setMapTypeId('mb');
-      var glow = glower.g(map, tj);
+      glow = glower.g(map, tj);
     });
   }
 
   $('#red').click(function(e) {
-      glow.fillStyle('rgba(255, 107, 107, 0.8)');
+      glow.fillStyle('rgba(186, 38, 35, 0.8)');
       e.stopPropagation();
   });
 
   $('#green').click(function(e) {
-      glow.fillStyle('rgba(107, 255, 107, 0.8)');
+      glow.fillStyle('rgba(19, 157, 3, 0.8)');
       e.stopPropagation();
   });
 

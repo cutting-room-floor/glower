@@ -106,7 +106,6 @@ var glower = {
         return this;
     },
     strokeTile: function(o, ctx, c) {
-        var gt = o.grid.grid_tile();
         ctx.globalAlpha = 0.7;
         ctx.globalCompositeOperation = 'lighter';
         var a = 1;
