@@ -11,18 +11,6 @@ $.domReady(function() {
     });
   }
 
-  function mapLeaf() {
-    $('#map')[0].innerHTML = '';
-    wax.tilejson('http://d.tiles.mapbox.com/v2/energy.billion-ton-update-biomass-production-by-county-v3.jsonp',
-    function(tj) {
-        map = new L.Map('map');
-        map.addLayer(new wax.leaf.connector(tj), { zoomControl: false });
-        // wax.mm.interaction(map, tj, {clickAction: []});
-        map.setView(new L.LatLng(38.376, -97.119), 5);
-        var glow = glower.leaf(map, tj);
-    });
-  }
-
   function mapG() {
     wax.tilejson('http://d.tiles.mapbox.com/v2/energy.billion-ton-update-biomass-production-by-county-v3.jsonp',
       function(tj) {
