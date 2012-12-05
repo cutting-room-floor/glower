@@ -1,24 +1,31 @@
 /*!
- * Modest Maps JS v0.17.0
+ * Modest Maps JS v3.3.5
  * http://modestmaps.com/
  *
- * Copyright (c) 2010 Stamen Design, All Rights Reserved.
+ * Copyright (c) 2011 Stamen Design, All Rights Reserved.
  *
  * Open source under the BSD License.
  * http://creativecommons.org/licenses/BSD/
  *
  * Versioned using Semantic Versioning (v.major.minor.patch)
  * See CHANGELOG and http://semver.org/ for more details.
- * 
+ *
  */
 
-// namespacing!
+var previousMM = MM;
+
+// namespacing for backwards-compatibility
 if (!com) {
-    var com = { };
-    if (!com.modestmaps) {
-        com.modestmaps = {};
-    }
+    var com = {};
+    if (!com.modestmaps) com.modestmaps = {};
 }
+
+var MM = com.modestmaps = {
+  noConflict: function() {
+    MM = previousMM;
+    return this;
+  }
+};
 
 (function(MM) {
     // Make inheritance bearable: clone one level of properties
@@ -35,6 +42,11 @@ if (!com) {
         // native animation frames
         // http://webstuff.nfshost.com/anim-timing/Overview.html
         // http://dev.chromium.org/developers/design-documents/requestanimationframe-implementation
+        // http://paulirish.com/2011/requestanimationframe-for-smart-animating/
+        // can't apply these directly to MM because Chrome needs window
+        // to own webkitRequestAnimationFrame (for example)
+        // perhaps we should namespace an alias onto window instead? 
+        // e.g. window.mmRequestAnimationFrame?
         return function(callback) {
             (window.requestAnimationFrame  ||
             window.webkitRequestAnimationFrame ||
@@ -51,6 +63,7 @@ if (!com) {
 
     // Inspired by LeafletJS
     MM.transformProperty = (function(props) {
+        if (!this.document) return; // node.js safety
         var style = document.documentElement.style;
         for (var i = 0; i < props.length; i++) {
             if (props[i] in style) {
@@ -58,7 +71,7 @@ if (!com) {
             }
         }
         return false;
-    })(['transformProperty', 'WebkitTransform', 'OTransform', 'MozTransform', 'msTransform']);
+    })(['transform', 'WebkitTransform', 'OTransform', 'MozTransform', 'msTransform']);
 
     MM.matrixString = function(point) {
         // Make the result of point.scale * point.width a whole number.
@@ -66,48 +79,47 @@ if (!com) {
             point.scale += (1 - point.scale * point.width % 1) / point.width;
         }
 
+        var scale = point.scale || 1;
         if (MM._browser.webkit3d) {
-            return 'matrix3d(' +
-                [(point.scale || '1'), '0,0,0,0',
-                 (point.scale || '1'), '0,0',
-                '0,0,1,0',
-                (point.x + (((point.width  * point.scale) - point.width) / 2)).toFixed(4),
-                (point.y + (((point.height * point.scale) - point.height) / 2)).toFixed(4),
-                0,1].join(',') + ')';
+            return  'translate3d(' +
+                point.x.toFixed(0) + 'px,' + point.y.toFixed(0) + 'px, 0px)' +
+                'scale3d(' + scale + ',' + scale + ', 1)';
         } else {
-            var unit = (MM.transformProperty == 'MozTransform') ? 'px' : '';
-            return 'matrix(' +
-                [(point.scale || '1'), 0, 0,
-                (point.scale || '1'),
-                (point.x + (((point.width  * point.scale) - point.width) / 2)) + unit,
-                (point.y + (((point.height * point.scale) - point.height) / 2)) + unit
-                ].join(',') + ')';
+            return  'translate(' +
+                point.x.toFixed(6) + 'px,' + point.y.toFixed(6) + 'px)' +
+                'scale(' + scale + ',' + scale + ')';
         }
     };
 
-    MM._browser = (function() {
+    MM._browser = (function(window) {
         return {
             webkit: ('WebKitCSSMatrix' in window),
             webkit3d: ('WebKitCSSMatrix' in window) && ('m11' in new WebKitCSSMatrix())
         };
-    })();
+    })(this); // use this for node.js global
 
     MM.moveElement = function(el, point) {
         if (MM.transformProperty) {
             // Optimize for identity transforms, where you don't actually
             // need to change this element's string. Browsers can optimize for
             // the .style.left case but not for this CSS case.
+            if (!point.scale) point.scale = 1;
+            if (!point.width) point.width = 0;
+            if (!point.height) point.height = 0;
             var ms = MM.matrixString(point);
             if (el[MM.transformProperty] !== ms) {
                 el.style[MM.transformProperty] =
-                    el[MM.transformProperty] =
-                    MM.matrixString(point);
+                    el[MM.transformProperty] = ms;
             }
         } else {
             el.style.left = point.x + 'px';
             el.style.top = point.y + 'px';
-            el.style.width =  Math.ceil(point.width  * point.scale) + 'px';
-            el.style.height = Math.ceil(point.height * point.scale) + 'px';
+            // Don't set width unless asked to: this is performance-intensive
+            // and not always necessary
+            if (point.width && point.height && point.scale) {
+                el.style.width =  Math.ceil(point.width  * point.scale) + 'px';
+                el.style.height = Math.ceil(point.height * point.scale) + 'px';
+            }
         }
     };
 
@@ -123,44 +135,42 @@ if (!com) {
         return false;
     };
 
+    MM.coerceLayer = function(layerish) {
+        if (typeof layerish == 'string') {
+            // Probably a template string
+            return new MM.Layer(new MM.TemplatedLayer(layerish));
+        } else if ('draw' in layerish && typeof layerish.draw == 'function') {
+            // good enough, though we should probably enforce .parent and .destroy() too
+            return layerish;
+        } else {
+            // probably a MapProvider
+            return new MM.Layer(layerish);
+        }
+    };
+
     // see http://ejohn.org/apps/jselect/event.html for the originals
     MM.addEvent = function(obj, type, fn) {
-        if (obj.attachEvent) {
-            obj['e'+type+fn] = fn;
-            obj[type+fn] = function(){ obj['e'+type+fn](window.event); };
-            obj.attachEvent('on'+type, obj[type+fn]);
-        }
-        else {
+        if (obj.addEventListener) {
             obj.addEventListener(type, fn, false);
             if (type == 'mousewheel') {
                 obj.addEventListener('DOMMouseScroll', fn, false);
             }
+        } else if (obj.attachEvent) {
+            obj['e'+type+fn] = fn;
+            obj[type+fn] = function(){ obj['e'+type+fn](window.event); };
+            obj.attachEvent('on'+type, obj[type+fn]);
         }
-    };
-
-    // From underscore.js
-    MM.bind = function(func, obj) {
-        var slice = Array.prototype.slice;
-        var nativeBind = Function.prototype.bind;
-        if (func.bind === nativeBind && nativeBind) {
-            return nativeBind.apply(func, slice.call(arguments, 1));
-        }
-        var args = slice.call(arguments, 2);
-        return function() {
-          return func.apply(obj, args.concat(slice.call(arguments)));
-        };
     };
 
     MM.removeEvent = function( obj, type, fn ) {
-        if ( obj.detachEvent ) {
-            obj.detachEvent('on'+type, obj[type+fn]);
-            obj[type+fn] = null;
-        }
-        else {
+        if (obj.removeEventListener) {
             obj.removeEventListener(type, fn, false);
             if (type == 'mousewheel') {
                 obj.removeEventListener('DOMMouseScroll', fn, false);
             }
+        } else if (obj.detachEvent) {
+            obj.detachEvent('on'+type, obj[type+fn]);
+            obj[type+fn] = null;
         }
     };
 
@@ -182,21 +192,24 @@ if (!com) {
         y: 0,
         toString: function() {
             return "(" + this.x.toFixed(3) + ", " + this.y.toFixed(3) + ")";
+        },
+        copy: function() {
+            return new MM.Point(this.x, this.y);
         }
     };
 
     // Get the euclidean distance between two points
     MM.Point.distance = function(p1, p2) {
-        var dx = (p2.x - p1.x);
-        var dy = (p2.y - p1.y);
-        return Math.sqrt(dx*dx + dy*dy);
+        return Math.sqrt(
+            Math.pow(p2.x - p1.x, 2) +
+            Math.pow(p2.y - p1.y, 2));
     };
 
     // Get a point between two other points, biased by `t`.
     MM.Point.interpolate = function(p1, p2, t) {
-        var px = p1.x + (p2.x - p1.x) * t;
-        var py = p1.y + (p2.y - p1.y) * t;
-        return new MM.Point(px, py);
+        return new MM.Point(
+            p1.x + (p2.x - p1.x) * t,
+            p1.y + (p2.y - p1.y) * t);
     };
     // Coordinate
     // ----------
@@ -222,10 +235,13 @@ if (!com) {
                    " @" + this.zoom.toFixed(3) + ")";
         },
         // Quickly generate a string representation of this coordinate to
-        // index it in hashes.
+        // index it in hashes. 
         toKey: function() {
-            // Only works for 24 bit input numbers (up to 16777215).
-            return (1 << this.zoom) * ((1 << this.zoom) + this.row) + this.column;
+            // We've tried to use efficient hash functions here before but we took
+            // them out. Contributions welcome but watch out for collisions when the
+            // row or column are negative and check thoroughly (exhaustively) before
+            // committing.
+            return this.zoom + ',' + this.row + ',' + this.column;
         },
         // Clone this object.
         copy: function() {
@@ -287,6 +303,9 @@ if (!com) {
         lon: 0,
         toString: function() {
             return "(" + this.lat.toFixed(3) + ", " + this.lon.toFixed(3) + ")";
+        },
+        copy: function() {
+            return new MM.Location(this.lat, this.lon);
         }
     };
 
@@ -325,7 +344,9 @@ if (!com) {
     // * FIXME: could be heavily optimized (lots of trig calls to cache)
     // * FIXME: could be inmproved for calculating a full path
     MM.Location.interpolate = function(l1, l2, f) {
-        if (l1.lat == l2.lat && l1.lon == l2.lon) return l1;
+        if (l1.lat === l2.lat && l1.lon === l2.lon) {
+            return new MM.Location(l1.lat, l1.lon);
+        }
         var deg2rad = Math.PI / 180.0,
             lat1 = l1.lat * deg2rad,
             lon1 = l1.lon * deg2rad,
@@ -337,17 +358,6 @@ if (!com) {
               Math.pow(Math.sin((lat1 - lat2) / 2), 2) +
               Math.cos(lat1) * Math.cos(lat2) *
               Math.pow(Math.sin((lon1 - lon2) / 2), 2)));
-        var bearing = Math.atan2(
-            Math.sin(lon1 - lon2) *
-            Math.cos(lat2),
-            Math.cos(lat1) *
-            Math.sin(lat2) -
-            Math.sin(lat1) *
-            Math.cos(lat2) *
-            Math.cos(lon1 - lon2)
-        )  / -(Math.PI / 180);
-
-        bearing = bearing < 0 ? 360 + bearing : bearing;
 
         var A = Math.sin((1-f)*d)/Math.sin(d);
         var B = Math.sin(f*d)/Math.sin(d);
@@ -362,6 +372,164 @@ if (!com) {
 
         return new MM.Location(latN / deg2rad, lonN / deg2rad);
     };
+    
+    // Returns bearing from one point to another
+    //
+    // * FIXME: bearing is not constant along significant great circle arcs.
+    MM.Location.bearing = function(l1, l2) {
+        var deg2rad = Math.PI / 180.0,
+            lat1 = l1.lat * deg2rad,
+            lon1 = l1.lon * deg2rad,
+            lat2 = l2.lat * deg2rad,
+            lon2 = l2.lon * deg2rad;
+        var result = Math.atan2(
+            Math.sin(lon1 - lon2) *
+            Math.cos(lat2),
+            Math.cos(lat1) *
+            Math.sin(lat2) -
+            Math.sin(lat1) *
+            Math.cos(lat2) *
+            Math.cos(lon1 - lon2)
+        )  / -(Math.PI / 180);
+
+        // map it into 0-360 range
+        return (result < 0) ? result + 360 : result;
+    };
+    // Extent
+    // ----------
+    // An object representing a map's rectangular extent, defined by its north,
+    // south, east and west bounds.
+
+    MM.Extent = function(north, west, south, east) {
+        if (north instanceof MM.Location &&
+            west instanceof MM.Location) {
+            var northwest = north,
+                southeast = west;
+
+            north = northwest.lat;
+            west = northwest.lon;
+            south = southeast.lat;
+            east = southeast.lon;
+        }
+        if (isNaN(south)) south = north;
+        if (isNaN(east)) east = west;
+        this.north = Math.max(north, south);
+        this.south = Math.min(north, south);
+        this.east = Math.max(east, west);
+        this.west = Math.min(east, west);
+    };
+
+    MM.Extent.prototype = {
+        // boundary attributes
+        north: 0,
+        south: 0,
+        east: 0,
+        west: 0,
+
+        copy: function() {
+            return new MM.Extent(this.north, this.west, this.south, this.east);
+        },
+
+        toString: function(precision) {
+            if (isNaN(precision)) precision = 3;
+            return [
+                this.north.toFixed(precision),
+                this.west.toFixed(precision),
+                this.south.toFixed(precision),
+                this.east.toFixed(precision)
+            ].join(", ");
+        },
+
+        // getters for the corner locations
+        northWest: function() {
+            return new MM.Location(this.north, this.west);
+        },
+        southEast: function() {
+            return new MM.Location(this.south, this.east);
+        },
+        northEast: function() {
+            return new MM.Location(this.north, this.east);
+        },
+        southWest: function() {
+            return new MM.Location(this.south, this.west);
+        },
+        // getter for the center location
+        center: function() {
+            return new MM.Location(
+                this.south + (this.north - this.south) / 2,
+                this.east + (this.west - this.east) / 2
+            );
+        },
+
+        // extend the bounds to include a location's latitude and longitude
+        encloseLocation: function(loc) {
+            if (loc.lat > this.north) this.north = loc.lat;
+            if (loc.lat < this.south) this.south = loc.lat;
+            if (loc.lon > this.east) this.east = loc.lon;
+            if (loc.lon < this.west) this.west = loc.lon;
+        },
+
+        // extend the bounds to include multiple locations
+        encloseLocations: function(locations) {
+            var len = locations.length;
+            for (var i = 0; i < len; i++) {
+                this.encloseLocation(locations[i]);
+            }
+        },
+
+        // reset bounds from a list of locations
+        setFromLocations: function(locations) {
+            var len = locations.length,
+                first = locations[0];
+            this.north = this.south = first.lat;
+            this.east = this.west = first.lon;
+            for (var i = 1; i < len; i++) {
+                this.encloseLocation(locations[i]);
+            }
+        },
+
+        // extend the bounds to include another extent
+        encloseExtent: function(extent) {
+            if (extent.north > this.north) this.north = extent.north;
+            if (extent.south < this.south) this.south = extent.south;
+            if (extent.east > this.east) this.east = extent.east;
+            if (extent.west < this.west) this.west = extent.west;
+        },
+
+        // determine if a location is within this extent
+        containsLocation: function(loc) {
+            return loc.lat >= this.south &&
+                loc.lat <= this.north &&
+                loc.lon >= this.west &&
+                loc.lon <= this.east;
+        },
+
+        // turn an extent into an array of locations containing its northwest
+        // and southeast corners (used in MM.Map.setExtent())
+        toArray: function() {
+            return [this.northWest(), this.southEast()];
+        }
+    };
+
+    MM.Extent.fromString = function(str) {
+        var parts = str.split(/\s*,\s*/);
+        if (parts.length != 4) {
+            throw "Invalid extent string (expecting 4 comma-separated numbers)";
+        }
+        return new MM.Extent(
+            parseFloat(parts[0]),
+            parseFloat(parts[1]),
+            parseFloat(parts[2]),
+            parseFloat(parts[3])
+        );
+    };
+
+    MM.Extent.fromArray = function(locations) {
+        var extent = new MM.Extent();
+        extent.setFromLocations(locations);
+        return extent;
+    };
+
     // Transformation
     // --------------
     MM.Transformation = function(ax, bx, cx, ay, by, cy) {
@@ -536,93 +704,155 @@ if (!com) {
     };
 
     MM.extend(MM.MercatorProjection, MM.Projection);
-
     // Providers
     // ---------
     // Providers provide tile URLs and possibly elements for layers.
-    MM.MapProvider = function(getTileUrl) {
-        if (getTileUrl) {
-            this.getTileUrl = getTileUrl;
+    //
+    // MapProvider ->
+    //   Template
+    //
+    MM.MapProvider = function(getTile) {
+        if (getTile) {
+            this.getTile = getTile;
         }
     };
 
     MM.MapProvider.prototype = {
-        // defaults to Google-y Mercator style maps
-        projection: new MM.MercatorProjection( 0, 
-                        MM.deriveTransformation(-Math.PI,  Math.PI, 0, 0, 
-                                                 Math.PI,  Math.PI, 1, 0, 
-                                                -Math.PI, -Math.PI, 0, 1) ),
-                    
-        tileWidth: 256,
-        tileHeight: 256,
-        
+
         // these are limits for available *tiles*
         // panning limits will be different (since you can wrap around columns)
         // but if you put Infinity in here it will screw up sourceCoordinate
-        topLeftOuterLimit: new MM.Coordinate(0,0,0),
-        bottomRightInnerLimit: new MM.Coordinate(1,1,0).zoomTo(18),
-        
+        tileLimits: [
+            new MM.Coordinate(0,0,0),             // top left outer
+            new MM.Coordinate(1,1,0).zoomTo(18)   // bottom right inner
+        ],
+
         getTileUrl: function(coordinate) {
             throw "Abstract method not implemented by subclass.";
         },
-        
-        locationCoordinate: function(location) {
-            return this.projection.locationCoordinate(location);
-        },
-    
-        coordinateLocation: function(location) {
-            return this.projection.coordinateLocation(location);
-        },
-        
-        outerLimits: function() {
-            return [ this.topLeftOuterLimit.copy(),
-                     this.bottomRightInnerLimit.copy() ];
+
+        getTile: function(coordinate) {
+            throw "Abstract method not implemented by subclass.";
         },
 
-        // use this to tell MapProvider  that tiles only exist between certain zoom levels.
-        // Map will respect thse zoom limits and not allow zooming outside this range
+        // releaseTile is not required
+        releaseTile: function(element) { },
+
+        // use this to tell MapProvider that tiles only exist between certain zoom levels.
+        // should be set separately on Map to restrict interactive zoom/pan ranges
         setZoomRange: function(minZoom, maxZoom) {
-            this.topLeftOuterLimit = this.topLeftOuterLimit.zoomTo(minZoom);
-            this.bottomRightInnerLimit = this.bottomRightInnerLimit.zoomTo(maxZoom);
+            this.tileLimits[0] = this.tileLimits[0].zoomTo(minZoom);
+            this.tileLimits[1] = this.tileLimits[1].zoomTo(maxZoom);
         },
-    
+
+        // wrap column around the world if necessary
+        // return null if wrapped coordinate is outside of the tile limits
         sourceCoordinate: function(coord) {
-            var TL = this.topLeftOuterLimit.zoomTo(coord.zoom);
-            var BR = this.bottomRightInnerLimit.zoomTo(coord.zoom);
-            var vSize = BR.row - TL.row;
-            if (coord.row < 0 | coord.row >= vSize) {
-                // it's too high or too low:
+            var TL = this.tileLimits[0].zoomTo(coord.zoom).container(),
+                BR = this.tileLimits[1].zoomTo(coord.zoom),
+                columnSize = Math.pow(2, coord.zoom),
+                wrappedColumn;
+
+            BR = new MM.Coordinate(Math.ceil(BR.row), Math.ceil(BR.column), Math.floor(BR.zoom));
+
+            if (coord.column < 0) {
+                wrappedColumn = ((coord.column % columnSize) + columnSize) % columnSize;
+            } else {
+                wrappedColumn = coord.column % columnSize;
+            }
+
+            if (coord.row < TL.row || coord.row >= BR.row) {
                 return null;
+            } else if (wrappedColumn < TL.column || wrappedColumn >= BR.column) {
+                return null;
+            } else {
+                return new MM.Coordinate(coord.row, wrappedColumn, coord.zoom);
             }
-            var hSize = BR.column - TL.column;
-            // assume infinite horizontal scrolling
-            var wrappedColumn = coord.column % hSize;
-            while (wrappedColumn < 0) {
-                wrappedColumn += hSize;
-            }
-            return new MM.Coordinate(coord.row, wrappedColumn, coord.zoom);
         }
     };
 
-    // A simple tileprovider builder that supports `XYZ`-style tiles.
-    MM.TemplatedMapProvider = function(template, subdomains) {
-        MM.MapProvider.call(this, function(coordinate) {
-            coordinate = this.sourceCoordinate(coordinate);
-            if (!coordinate) {
+    /**
+     * FIXME: need a better explanation here! This is a pretty crucial part of
+     * understanding how to use ModestMaps.
+     *
+     * TemplatedMapProvider is a tile provider that generates tile URLs from a
+     * template string by replacing the following bits for each tile
+     * coordinate:
+     *
+     * {Z}: the tile's zoom level (from 1 to ~20)
+     * {X}: the tile's X, or column (from 0 to a very large number at higher
+     * zooms)
+     * {Y}: the tile's Y, or row (from 0 to a very large number at higher
+     * zooms)
+     *
+     * E.g.:
+     *
+     * var osm = new MM.TemplatedMapProvider("http://tile.openstreetmap.org/{Z}/{X}/{Y}.png");
+     *
+     * Or:
+     *
+     * var placeholder = new MM.TemplatedMapProvider("http://placehold.it/256/f0f/fff.png&text={Z}/{X}/{Y}");
+     *
+     */
+    MM.Template = function(template, subdomains) {
+        var isQuadKey = template.match(/{(Q|quadkey)}/);
+        // replace Microsoft style substitution strings
+        if (isQuadKey) template = template
+            .replace('{subdomains}', '{S}')
+            .replace('{zoom}', '{Z}')
+            .replace('{quadkey}', '{Q}');
+
+        var hasSubdomains = (subdomains &&
+            subdomains.length && template.indexOf("{S}") >= 0);
+
+        function quadKey (row, column, zoom) {
+            var key = '';
+            for (var i = 1; i <= zoom; i++) {
+                key += (((row >> zoom - i) & 1) << 1) | ((column >> zoom - i) & 1);
+            }
+            return key || '0';
+        }
+
+        var getTileUrl = function(coordinate) {
+            var coord = this.sourceCoordinate(coordinate);
+            if (!coord) {
                 return null;
             }
             var base = template;
-            if (subdomains && subdomains.length && base.indexOf("{S}") >= 0) {
-                var subdomain = parseInt(coordinate.zoom + coordinate.row + coordinate.column, 10) % subdomains.length;
-                base = base.replace('{S}', subdomains[subdomain]);
+            if (hasSubdomains) {
+                var index = parseInt(coord.zoom + coord.row + coord.column, 10) %
+                    subdomains.length;
+                base = base.replace('{S}', subdomains[index]);
             }
-            return base.replace('{Z}', coordinate.zoom.toFixed(0))
-                .replace('{X}', coordinate.column.toFixed(0))
-                .replace('{Y}', coordinate.row.toFixed(0));
-        });
+            if (isQuadKey) {
+                return base
+                    .replace('{Z}', coord.zoom.toFixed(0))
+                    .replace('{Q}', quadKey(coord.row,
+                        coord.column,
+                        coord.zoom));
+            } else {
+                return base
+                    .replace('{Z}', coord.zoom.toFixed(0))
+                    .replace('{X}', coord.column.toFixed(0))
+                    .replace('{Y}', coord.row.toFixed(0));
+            }
+        };
+
+        MM.MapProvider.call(this, getTileUrl);
     };
 
-    MM.extend(MM.TemplatedMapProvider, MM.MapProvider);
+    MM.Template.prototype = {
+        // quadKey generator
+        getTile: function(coord) {
+          return this.getTileUrl(coord);
+        }
+    };
+
+    MM.extend(MM.Template, MM.MapProvider);
+
+    MM.TemplatedLayer = function(template, subdomains, name) {
+      return new MM.Layer(new MM.Template(template, subdomains), null, name);
+    };
     // Event Handlers
     // --------------
 
@@ -644,347 +874,384 @@ if (!com) {
         return point;
     };
 
-    // A handler that allows mouse-wheel zooming - zooming in
-    // when page would scroll up, and out when the page would scroll down.
-    MM.MouseWheelHandler = function(map) {
-        if (map !== undefined) this.init(map);
-    };
+    MM.MouseWheelHandler = function() {
+        var handler = {},
+            map,
+            _zoomDiv,
+            prevTime,
+            precise = false;
 
-    MM.MouseWheelHandler.prototype = {
-
-        init: function(map) {
-            this.map = map;
-            MM.addEvent(map.parent, 'mousewheel', MM.bind(this.mouseWheel, this));
-        },
-
-        mouseWheel: function(e) {
+        function mouseWheel(e) {
             var delta = 0;
-            this.prevTime = this.prevTime || new Date().getTime();
+            prevTime = prevTime || new Date().getTime();
 
-            if (e.wheelDelta) {
-                delta = e.wheelDelta;
-            } else if (e.detail) {
-                delta = -e.detail;
+            try {
+                _zoomDiv.scrollTop = 1000;
+                _zoomDiv.dispatchEvent(e);
+                delta = 1000 - _zoomDiv.scrollTop;
+            } catch (error) {
+                delta = e.wheelDelta || (-e.detail * 5);
             }
 
             // limit mousewheeling to once every 200ms
-            var timeSince = new Date().getTime() - this.prevTime;
+            var timeSince = new Date().getTime() - prevTime;
+            var point = MM.getMousePoint(e, map);
 
-            if (Math.abs(delta) > 0 && (timeSince > 200)) {
-                var point = MM.getMousePoint(e, this.map);
-                this.map.zoomByAbout(delta > 0 ? 1 : -1, point);
-
-                this.prevTime = new Date().getTime();
+            if (Math.abs(delta) > 0 && (timeSince > 200) && !precise) {
+                map.zoomByAbout(delta > 0 ? 1 : -1, point);
+                prevTime = new Date().getTime();
+            } else if (precise) {
+                map.zoomByAbout(delta * 0.001, point);
             }
 
             // Cancel the event so that the page doesn't scroll
             return MM.cancelEvent(e);
         }
+
+        handler.init = function(x) {
+            map = x;
+            _zoomDiv = document.body.appendChild(document.createElement('div'));
+            _zoomDiv.style.cssText = 'visibility:hidden;top:0;height:0;width:0;overflow-y:scroll';
+            var innerDiv = _zoomDiv.appendChild(document.createElement('div'));
+            innerDiv.style.height = '2000px';
+            MM.addEvent(map.parent, 'mousewheel', mouseWheel);
+            return handler;
+        };
+
+        handler.precise = function(x) {
+            if (!arguments.length) return precise;
+            precise = x;
+            return handler;
+        };
+
+        handler.remove = function() {
+            MM.removeEvent(map.parent, 'mousewheel', mouseWheel);
+            _zoomDiv.parentNode.removeChild(_zoomDiv);
+        };
+
+        return handler;
     };
 
-    // Handle double clicks, that zoom the map in one zoom level.
-    MM.DoubleClickHandler = function(map) {
-        if (map !== undefined) {
-            this.init(map);
-        }
-    };
+    MM.DoubleClickHandler = function() {
+        var handler = {},
+            map;
 
-    MM.DoubleClickHandler.prototype = {
-
-        init: function(map) {
-            this.map = map;
-            MM.addEvent(map.parent, 'dblclick', this._doubleClick = MM.bind(this.doubleClick, this));
-        },
-
-        doubleClick: function(e) {
+        function doubleClick(e) {
             // Ensure that this handler is attached once.
             // Get the point on the map that was double-clicked
-            var point = MM.getMousePoint(e, this.map);
-
+            var point = MM.getMousePoint(e, map);
             // use shift-double-click to zoom out
-            this.map.zoomByAbout(e.shiftKey ? -1 : 1, point);
-
+            map.zoomByAbout(e.shiftKey ? -1 : 1, point);
             return MM.cancelEvent(e);
         }
+
+        handler.init = function(x) {
+            map = x;
+            MM.addEvent(map.parent, 'dblclick', doubleClick);
+            return handler;
+        };
+
+        handler.remove = function() {
+            MM.removeEvent(map.parent, 'dblclick', doubleClick);
+        };
+
+        return handler;
     };
 
     // Handle the use of mouse dragging to pan the map.
-    MM.DragHandler = function(map) {
-        if (map !== undefined) {
-            this.init(map);
-        }
-    };
+    MM.DragHandler = function() {
+        var handler = {},
+            prevMouse,
+            map;
 
-    MM.DragHandler.prototype = {
+        function mouseDown(e) {
+            if (e.shiftKey || e.button == 2) return;
+            MM.addEvent(document, 'mouseup', mouseUp);
+            MM.addEvent(document, 'mousemove', mouseMove);
 
-        init: function(map) {
-            this.map = map;
-            MM.addEvent(map.parent, 'mousedown', MM.bind(this.mouseDown, this));
-        },
-
-        mouseDown: function(e) {
-            MM.addEvent(document, 'mouseup', this._mouseUp = MM.bind(this.mouseUp, this));
-            MM.addEvent(document, 'mousemove', this._mouseMove = MM.bind(this.mouseMove, this));
-
-            this.prevMouse = new MM.Point(e.clientX, e.clientY);
-            this.map.parent.style.cursor = 'move';
+            prevMouse = new MM.Point(e.clientX, e.clientY);
+            map.parent.style.cursor = 'move';
 
             return MM.cancelEvent(e);
-        },
+        }
 
-        mouseMove: function(e) {
-            if (this.prevMouse) {
-                this.map.panBy(
-                    e.clientX - this.prevMouse.x,
-                    e.clientY - this.prevMouse.y);
-                this.prevMouse.x = e.clientX;
-                this.prevMouse.y = e.clientY;
-                this.prevMouse.t = +new Date();
+        function mouseUp(e) {
+            MM.removeEvent(document, 'mouseup', mouseUp);
+            MM.removeEvent(document, 'mousemove', mouseMove);
+
+            prevMouse = null;
+            map.parent.style.cursor = '';
+
+            return MM.cancelEvent(e);
+        }
+
+        function mouseMove(e) {
+            if (prevMouse) {
+                map.panBy(
+                    e.clientX - prevMouse.x,
+                    e.clientY - prevMouse.y);
+                prevMouse.x = e.clientX;
+                prevMouse.y = e.clientY;
+                prevMouse.t = +new Date();
             }
 
             return MM.cancelEvent(e);
-        },
-
-        mouseUp: function(e) {
-            MM.removeEvent(document, 'mouseup', this._mouseUp);
-            MM.removeEvent(document, 'mousemove', this._mouseMove);
-
-            var inertia = 50;
-
-            var iv = {
-                x: (e.clientX - this.prevMouse.x) * (inertia / Math.min(+new Date() - this.prevMouse.t, 1)),
-                y: (e.clientY - this.prevMouse.y) * (inertia / Math.min(+new Date() - this.prevMouse.t, 1))
-            };
-
-            this.prevMouse = null;
-            this.map.parent.style.cursor = '';
-
-            return MM.cancelEvent(e);
         }
+
+        handler.init = function(x) {
+            map = x;
+            MM.addEvent(map.parent, 'mousedown', mouseDown);
+            return handler;
+        };
+
+        handler.remove = function() {
+            MM.removeEvent(map.parent, 'mousedown', mouseDown);
+        };
+
+        return handler;
     };
 
-    // A shortcut for adding drag, double click,
-    // and mouse wheel events to the map. This is the default
-    // handler attached to a map if the handlers argument isn't given.
-    MM.MouseHandler = function(map) {
-        if (map !== undefined) {
-            this.init(map);
-        }
+    MM.MouseHandler = function() {
+        var handler = {},
+            map,
+            handlers;
+
+        handler.init = function(x) {
+            map = x;
+            handlers = [
+                MM.DragHandler().init(map),
+                MM.DoubleClickHandler().init(map),
+                MM.MouseWheelHandler().init(map)
+            ];
+            return handler;
+        };
+
+        handler.remove = function() {
+            for (var i = 0; i < handlers.length; i++) {
+                handlers[i].remove();
+            }
+            return handler;
+        };
+
+        return handler;
     };
+    MM.TouchHandler = function() {
+        var handler = {},
+            map,
+            maxTapTime = 250,
+            maxTapDistance = 30,
+            maxDoubleTapDelay = 350,
+            locations = {},
+            taps = [],
+            snapToZoom = true,
+            wasPinching = false,
+            lastPinchCenter = null;
 
-    MM.MouseHandler.prototype = {
-        init: function(map) {
-            this.map = map;
-            new MM.DragHandler(map);
-            new MM.DoubleClickHandler(map);
-            new MM.MouseWheelHandler(map);
+        function isTouchable () {
+             var el = document.createElement('div');
+             el.setAttribute('ongesturestart', 'return;');
+             return (typeof el.ongesturestart === 'function');
         }
-    };
-    MM.TouchHandler = function() { };
 
-    MM.TouchHandler.prototype = {
-
-        maxTapTime: 150,
-        maxTapDistance: 10,
-        maxDoubleTapDelay: 350,
-        locations: {},
-        taps: [],
-
-        init: function(map, options) {
-            this.map = map;
-            options = options || {};
-            MM.addEvent(map.parent, 'touchstart',
-                MM.bind(this.touchStartMachine, this));
-            MM.addEvent(map.parent, 'touchmove',
-                MM.bind(this.touchMoveMachine, this));
-            MM.addEvent(map.parent, 'touchend',
-                MM.bind(this.touchEndMachine, this));
-
-            this.options = {};
-            this.options.snapToZoom = options.snapToZoom || true;
-        },
-
-        interruptTouches: function(e) {
+        function updateTouches(e) {
             for (var i = 0; i < e.touches.length; i += 1) {
                 var t = e.touches[i];
-                this.locations[t.identifier] = {
-                    scale: e.scale,
-                    screenX: t.screenX,
-                    screenY: t.screenY,
-                    time: +new Date()
-                };
+                if (t.identifier in locations) {
+                    var l = locations[t.identifier];
+                    l.x = t.clientX;
+                    l.y = t.clientY;
+                    l.scale = e.scale;
+                }
+                else {
+                    locations[t.identifier] = {
+                        scale: e.scale,
+                        startPos: { x: t.clientX, y: t.clientY },
+                        x: t.clientX,
+                        y: t.clientY,
+                        time: new Date().getTime()
+                    };
+                }
             }
-        },
+        }
 
         // Test whether touches are from the same source -
         // whether this is the same touchmove event.
-        sameTouch: function(event, touch) {
+        function sameTouch (event, touch) {
             return (event && event.touch) &&
                 (touch.identifier == event.touch.identifier);
-        },
+        }
 
-        // Quick euclidean distance between two points
-        distance: function(t1, t2) {
-            return Math.sqrt(
-                Math.pow(t1.screenX - t2.screenX, 2) +
-                Math.pow(t1.screenY - t2.screenY, 2));
-        },
+        function touchStart(e) {
+            updateTouches(e);
+        }
 
-        touchStartMachine: function(e) {
-            this.interruptTouches(e);
-            return MM.cancelEvent(e);
-        },
-
-        touchMoveMachine: function(e) {
-            var now = new Date().getTime();
+        function touchMove(e) {
             switch (e.touches.length) {
                 case 1:
-                    this.onPanning(e.touches[0]);
+                    onPanning(e.touches[0]);
                     break;
                 case 2:
-                    this.onPinching(e);
+                    onPinching(e);
                     break;
             }
+            updateTouches(e);
             return MM.cancelEvent(e);
-        },
+        }
 
-        touchEndMachine: function(e) {
+        function touchEnd(e) {
             var now = new Date().getTime();
-            switch (e.changedTouches.length) {
-                case 1:
-                    // this.onPanned(e);
-                    break;
-                case 2:
-                    this.onPinched(e);
-                    break;
+            // round zoom if we're done pinching
+            if (e.touches.length === 0 && wasPinching) {
+                onPinched(lastPinchCenter);
             }
 
             // Look at each changed touch in turn.
             for (var i = 0; i < e.changedTouches.length; i += 1) {
-                var t = e.changedTouches[i];
-                var start = this.locations[t.identifier];
-                if (!start) return;
+                var t = e.changedTouches[i],
+                    loc = locations[t.identifier];
+                // if we didn't see this one (bug?)
+                // or if it was consumed by pinching already
+                // just skip to the next one
+                if (!loc || loc.wasPinch) {
+                    continue;
+                }
 
                 // we now know we have an event object and a
                 // matching touch that's just ended. Let's see
                 // what kind of event it is based on how long it
                 // lasted and how far it moved.
-                var time = now - start.time;
-                var travel = this.distance(t, start);
-                if (travel > this.maxTapDistance) {
+                var pos = { x: t.clientX, y: t.clientY },
+                    time = now - loc.time,
+                    travel = MM.Point.distance(pos, loc.startPos);
+                if (travel > maxTapDistance) {
                     // we will to assume that the drag has been handled separately
-                } else if (time > this.maxTapTime) {
-                    // close in time, but not in space: a hold
-                    this.onHold({
-                        x: t.screenX,
-                        y: t.screenY,
-                        end: now,
-                        duration: time
-                    });
+                } else if (time > maxTapTime) {
+                    // close in space, but not in time: a hold
+                    pos.end = now;
+                    pos.duration = time;
+                    onHold(pos);
                 } else {
                     // close in both time and space: a tap
-                    this.onTap({
-                        x: t.screenX,
-                        y: t.screenY,
-                        time: now
-                    });
+                    pos.time = now;
+                    onTap(pos);
                 }
             }
 
-            // this.interruptTouches(events);
-
             // Weird, sometimes an end event doesn't get thrown
             // for a touch that nevertheless has disappeared.
-            // TODO
-            // if (e.touches.length === 0 && events.length >= 1) {
-            //     events.splice(0, events.length);
-            // }
-            this.locations = {};
-            return MM.cancelEvent(e);
-        },
+            // Still, this will eventually catch those ids:
 
-        onHold: function(hold) {
+            var validTouchIds = {};
+            for (var j = 0; j < e.touches.length; j++) {
+                validTouchIds[e.touches[j].identifier] = true;
+            }
+            for (var id in locations) {
+                if (!(id in validTouchIds)) {
+                    delete validTouchIds[id];
+                }
+            }
+
+            return MM.cancelEvent(e);
+        }
+
+        function onHold (hold) {
             // TODO
-        },
+        }
 
         // Handle a tap event - mainly watch for a doubleTap
-        onTap: function(tap) {
-            if (this.taps.length &&
-                (tap.time - this.taps[0].time) < this.maxDoubleTapDelay) {
-                this.onDoubleTap(tap);
+        function onTap(tap) {
+            if (taps.length &&
+                (tap.time - taps[0].time) < maxDoubleTapDelay) {
+                onDoubleTap(tap);
+                taps = [];
                 return;
             }
-            this.taps = [tap];
-        },
+            taps = [tap];
+        }
 
         // Handle a double tap by zooming in a single zoom level to a
         // round zoom.
-        onDoubleTap: function(tap) {
-            // zoom in to a round number
-            var z = Math.floor(this.map.getZoom() + 2);
-            z = z - this.map.getZoom();
+        function onDoubleTap(tap) {
+            var z = map.getZoom(), // current zoom
+                tz = Math.round(z) + 1, // target zoom
+                dz = tz - z;            // desired delate
 
+            // zoom in to a round number
             var p = new MM.Point(tap.x, tap.y);
-            this.map.zoomByAbout(z, p);
-        },
+            map.zoomByAbout(dz, p);
+        }
 
         // Re-transform the actual map parent's CSS transformation
-        onPanning: function(touch) {
-            this.map.panBy(
-                touch.screenX - this.locations[touch.identifier].screenX,
-                touch.screenY - this.locations[touch.identifier].screenY);
-
-            this.locations[touch.identifier] = {
-                screenX: touch.screenX,
-                screenY: touch.screenY,
-                time: +new Date()
-            };
-        },
-
-        onPanned: function(touch) { },
-
-        onPinching: function(e) {
-            this.map.zoomByAbout(
-                Math.log(e.scale) / Math.LN2 -
-                Math.log(this.locations[e.touches[0].identifier].scale) / Math.LN2,
-                new MM.Point(
-                    ((e.touches[0].screenX + e.touches[1].screenX) / 2),
-                    ((e.touches[0].screenY + e.touches[1].screenY) / 2))
-            );
-
-            this.map.panBy(
-                ((e.touches[0].screenX +
-                  e.touches[1].screenX) / 2) -
-
-                // centerpoint of previous x
-                ((this.locations[e.touches[0].identifier].screenX +
-                 this.locations[e.touches[1].identifier].screenX) / 2),
-
-                ((e.touches[0].screenY +
-                  e.touches[1].screenY) / 2) -
-
-                // centerpoint of previous y
-                ((this.locations[e.touches[0].identifier].screenY +
-                 this.locations[e.touches[1].identifier].screenY) / 2));
-
-            for (var i = 0; i < e.touches.length; i++) {
-                this.locations[e.touches[i].identifier] = {
-                    screenX: e.touches[i].screenX,
-                    screenY: e.touches[i].screenY,
-                    scale: e.scale,
-                    time: +new Date()
-                };
-            }
-        },
-
-        // When a pinch event ends, recalculate the zoom and center
-        // of the map.
-        onPinched: function(touch1, touch2) {
-            // TODO: easing
-            if (this.options.snapToZoom) {
-                this.map.setZoom(Math.round(this.map.getZoom()));
-            }
+        function onPanning (touch) {
+            var pos = { x: touch.clientX, y: touch.clientY },
+                prev = locations[touch.identifier];
+            map.panBy(pos.x - prev.x, pos.y - prev.y);
         }
+
+        function onPinching(e) {
+            // use the first two touches and their previous positions
+            var t0 = e.touches[0],
+                t1 = e.touches[1],
+                p0 = new MM.Point(t0.clientX, t0.clientY),
+                p1 = new MM.Point(t1.clientX, t1.clientY),
+                l0 = locations[t0.identifier],
+                l1 = locations[t1.identifier];
+
+            // mark these touches so they aren't used as taps/holds
+            l0.wasPinch = true;
+            l1.wasPinch = true;
+
+            // scale about the center of these touches
+            var center = MM.Point.interpolate(p0, p1, 0.5);
+
+            map.zoomByAbout(
+                Math.log(e.scale) / Math.LN2 -
+                Math.log(l0.scale) / Math.LN2,
+                center );
+
+            // pan from the previous center of these touches
+            var prevCenter = MM.Point.interpolate(l0, l1, 0.5);
+
+            map.panBy(center.x - prevCenter.x,
+                           center.y - prevCenter.y);
+            wasPinching = true;
+            lastPinchCenter = center;
+        }
+
+        // When a pinch event ends, round the zoom of the map.
+        function onPinched(p) {
+            // TODO: easing
+            if (snapToZoom) {
+                var z = map.getZoom(), // current zoom
+                    tz =Math.round(z);     // target zoom
+                map.zoomByAbout(tz - z, p);
+            }
+            wasPinching = false;
+        }
+
+        handler.init = function(x) {
+            map = x;
+
+            // Fail early if this isn't a touch device.
+            if (!isTouchable()) return handler;
+
+            MM.addEvent(map.parent, 'touchstart', touchStart);
+            MM.addEvent(map.parent, 'touchmove', touchMove);
+            MM.addEvent(map.parent, 'touchend', touchEnd);
+            return handler;
+        };
+
+        handler.remove = function() {
+            // Fail early if this isn't a touch device.
+            if (!isTouchable()) return handler;
+
+            MM.removeEvent(map.parent, 'touchstart', touchStart);
+            MM.removeEvent(map.parent, 'touchmove', touchMove);
+            MM.removeEvent(map.parent, 'touchend', touchEnd);
+            return handler;
+        };
+
+        return handler;
     };
     // CallbackManager
     // ---------------
@@ -1053,7 +1320,7 @@ if (!com) {
     // RequestManager
     // --------------
     // an image loading queue
-    MM.RequestManager = function(parent) {
+    MM.RequestManager = function() {
 
         // The loading bay is a document fragment to optimize appending, since
         // the elements within are invisible. See
@@ -1066,7 +1333,8 @@ if (!com) {
         this.maxOpenRequests = 4;
         this.requestQueue = [];
 
-        this.callbackManager = new MM.CallbackManager(this, [ 'requestcomplete' ]);
+        this.callbackManager = new MM.CallbackManager(this, [
+            'requestcomplete', 'requesterror']);
     };
 
     MM.RequestManager.prototype = {
@@ -1107,16 +1375,29 @@ if (!com) {
             this.clearExcept({});
         },
 
-        // Clear everything in the queue except for certain keys, speciied
+        clearRequest: function(id) {
+            if(id in this.requestsById) {
+                delete this.requestsById[id];
+            }
+
+            for(var i = 0; i < this.requestQueue.length; i++) {
+                var request = this.requestQueue[i];
+                if(request && request.id == id) {
+                    this.requestQueue[i] = null;
+                }
+            }
+        },
+
+        // Clear everything in the queue except for certain keys, specified
         // by an object of the form
         //
         //     { key: throwawayvalue }
-        clearExcept: function(validKeys) {
+        clearExcept: function(validIds) {
 
             // clear things from the queue first...
             for (var i = 0; i < this.requestQueue.length; i++) {
                 var request = this.requestQueue[i];
-                if (request && !(request.key in validKeys)) {
+                if (request && !(request.id in validIds)) {
                     this.requestQueue[i] = null;
                 }
             }
@@ -1125,7 +1406,7 @@ if (!com) {
             var openRequests = this.loadingBay.childNodes;
             for (var j = openRequests.length-1; j >= 0; j--) {
                 var img = openRequests[j];
-                if (!(img.id in validKeys)) {
+                if (!(img.id in validIds)) {
                     this.loadingBay.removeChild(img);
                     this.openRequestCount--;
                     /* console.log(this.openRequestCount + " open requests"); */
@@ -1138,20 +1419,23 @@ if (!com) {
             //  Ignore standards at your own peril."
             // -- http://www.yuiblog.com/blog/2006/09/26/for-in-intrigue/
             for (var id in this.requestsById) {
-                if (this.requestsById.hasOwnProperty(id)) {
-                    if (!(id in validKeys)) {
-                        var request = this.requestsById[id];
+                if (!(id in validIds)) {
+                    if (this.requestsById.hasOwnProperty(id)) {
+                        var requestToRemove = this.requestsById[id];
                         // whether we've done the request or not...
                         delete this.requestsById[id];
-                        if (request !== null) {
-                            request = request.key = request.coord = request.url = null;
+                        if (requestToRemove !== null) {
+                            requestToRemove =
+                                requestToRemove.id =
+                                requestToRemove.coord =
+                                requestToRemove.url = null;
                         }
                     }
                 }
             }
         },
 
-        // Given a tile key, check whether the RequestManager is currently
+        // Given a tile id, check whether the RequestManager is currently
         // requesting it and waiting for the result.
         hasRequest: function(id) {
             return (id in this.requestsById);
@@ -1159,18 +1443,18 @@ if (!com) {
 
         // * TODO: remove dependency on coord (it's for sorting, maybe call it data?)
         // * TODO: rename to requestImage once it's not tile specific
-        requestTile: function(key, coord, url) {
-            if (!(key in this.requestsById)) {
-                var request = { key: key, coord: coord.copy(), url: url };
+        requestTile: function(id, coord, url) {
+            if (!(id in this.requestsById)) {
+                var request = { id: id, coord: coord.copy(), url: url };
                 // if there's no url just make sure we don't request this image again
-                this.requestsById[key] = request;
+                this.requestsById[id] = request;
                 if (url) {
                     this.requestQueue.push(request);
                     /* console.log(this.requestQueue.length + ' pending requests'); */
                 }
             }
         },
-        
+
         getProcessQueue: function() {
             // let's only create this closure once...
             if (!this._processQueue) {
@@ -1194,7 +1478,6 @@ if (!com) {
             while (this.openRequestCount < this.maxOpenRequests && this.requestQueue.length > 0) {
                 var request = this.requestQueue.pop();
                 if (request) {
-                    
                     this.openRequestCount++;
                     /* console.log(this.openRequestCount + ' open requests'); */
 
@@ -1203,16 +1486,15 @@ if (!com) {
                     // http://tinyurl.com/y9wz2jj http://tinyurl.com/yes6rrt
                     var img = document.createElement('img');
 
-                    // FIXME: key is technically not unique in document if there
+                    // FIXME: id is technically not unique in document if there
                     // are two Maps but toKey is supposed to be fast so we're trying
                     // to avoid a prefix ... hence we can't use any calls to
                     // `document.getElementById()` to retrieve images
-                    img.id = request.key;
+                    img.id = request.id;
                     img.style.position = 'absolute';
                     // * FIXME: store this elsewhere to avoid scary memory leaks?
                     // * FIXME: call this 'data' not 'coord' so that RequestManager is less Tile-centric?
                     img.coord = request.coord;
-                    
                     // add it to the DOM in a hidden layer, this is a bit of a hack, but it's
                     // so that the event we get in image.onload has srcElement assigned in IE6
                     this.loadingBay.appendChild(img);
@@ -1221,7 +1503,7 @@ if (!com) {
                     img.src = request.url;
 
                     // keep things tidy
-                    request = request.key = request.coord = request.url = null;
+                    request = request.id = request.coord = request.url = null;
                 }
             }
         },
@@ -1263,6 +1545,10 @@ if (!com) {
                         // really stops loading
                         // FIXME: we'll never retry because this id is still
                         // in requestsById - is that right?
+                        theManager.dispatchCallback('requesterror', {
+                            element: img,
+                            url: ('' + img.src)
+                        });
                         img.src = null;
                     }
 
@@ -1279,20 +1565,453 @@ if (!com) {
 
     };
 
+    // Layer
+    MM.Layer = function(provider, parent, name) {
+        this.parent = parent || document.createElement('div');
+        this.parent.style.cssText = 'position: absolute; top: 0px; left: 0px; width: 100%; height: 100%; margin: 0; padding: 0; z-index: 0';
+        this.name = name;
+        this.levels = {};
+        this.requestManager = new MM.RequestManager();
+        this.requestManager.addCallback('requestcomplete', this.getTileComplete());
+        this.requestManager.addCallback('requesterror', this.getTileError());
+        if (provider) this.setProvider(provider);
+    };
+
+    MM.Layer.prototype = {
+
+        map: null, // TODO: remove
+        parent: null,
+        name: null,
+        enabled: true,
+        tiles: null,
+        levels: null,
+        requestManager: null,
+        provider: null,
+        _tileComplete: null,
+
+        getTileComplete: function() {
+            if (!this._tileComplete) {
+                var theLayer = this;
+                this._tileComplete = function(manager, tile) {
+                    theLayer.tiles[tile.id] = tile;
+                    theLayer.positionTile(tile);
+                };
+            }
+            return this._tileComplete;
+        },
+
+        getTileError: function() {
+            if (!this._tileError) {
+                var theLayer = this;
+                this._tileError = function(manager, tile) {
+                    tile.element.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+                    theLayer.tiles[tile.element.id] = tile.element;
+                    theLayer.positionTile(tile.element);
+                };
+            }
+            return this._tileError;
+        },
+
+        draw: function() {
+            if (!this.enabled || !this.map) return;
+            // compares manhattan distance from center of
+            // requested tiles to current map center
+            // NB:- requested tiles are *popped* from queue, so we do a descending sort
+            var theCoord = this.map.coordinate.zoomTo(Math.round(this.map.coordinate.zoom));
+
+            function centerDistanceCompare(r1, r2) {
+                if (r1 && r2) {
+                    var c1 = r1.coord;
+                    var c2 = r2.coord;
+                    if (c1.zoom == c2.zoom) {
+                        var ds1 = Math.abs(theCoord.row - c1.row - 0.5) +
+                                  Math.abs(theCoord.column - c1.column - 0.5);
+                        var ds2 = Math.abs(theCoord.row - c2.row - 0.5) +
+                                  Math.abs(theCoord.column - c2.column - 0.5);
+                        return ds1 < ds2 ? 1 : ds1 > ds2 ? -1 : 0;
+                    } else {
+                        return c1.zoom < c2.zoom ? 1 : c1.zoom > c2.zoom ? -1 : 0;
+                    }
+                }
+                return r1 ? 1 : r2 ? -1 : 0;
+            }
+
+            // if we're in between zoom levels, we need to choose the nearest:
+            var baseZoom = Math.round(this.map.coordinate.zoom);
+
+            // these are the top left and bottom right tile coordinates
+            // we'll be loading everything in between:
+            var startCoord = this.map.pointCoordinate(new MM.Point(0,0))
+                .zoomTo(baseZoom).container();
+            var endCoord = this.map.pointCoordinate(this.map.dimensions)
+                .zoomTo(baseZoom).container().right().down();
+
+            // tiles with invalid keys will be removed from visible levels
+            // requests for tiles with invalid keys will be canceled
+            // (this object maps from a tile key to a boolean)
+            var validTileKeys = { };
+
+            // make sure we have a container for tiles in the current level
+            var levelElement = this.createOrGetLevel(startCoord.zoom);
+
+            // use this coordinate for generating keys, parents and children:
+            var tileCoord = startCoord.copy();
+
+            for (tileCoord.column = startCoord.column;
+                 tileCoord.column <= endCoord.column; tileCoord.column++) {
+                for (tileCoord.row = startCoord.row;
+                     tileCoord.row <= endCoord.row; tileCoord.row++) {
+                    var validKeys = this.inventoryVisibleTile(levelElement, tileCoord);
+
+                    while (validKeys.length) {
+                        validTileKeys[validKeys.pop()] = true;
+                    }
+                }
+            }
+
+            // i from i to zoom-5 are levels that would be scaled too big,
+            // i from zoom + 2 to levels. length are levels that would be
+            // scaled too small (and tiles would be too numerous)
+            for (var name in this.levels) {
+                if (this.levels.hasOwnProperty(name)) {
+                    var zoom = parseInt(name,10);
+
+                    if (zoom >= startCoord.zoom - 5 && zoom < startCoord.zoom + 2) {
+                        continue;
+                    }
+
+                    var level = this.levels[name];
+                    level.style.display = 'none';
+                    var visibleTiles = this.tileElementsInLevel(level);
+
+                    while (visibleTiles.length) {
+                        this.provider.releaseTile(visibleTiles[0].coord);
+                        this.requestManager.clearRequest(visibleTiles[0].coord.toKey());
+                        level.removeChild(visibleTiles[0]);
+                        visibleTiles.shift();
+                    }
+                }
+            }
+
+            // levels we want to see, if they have tiles in validTileKeys
+            var minLevel = startCoord.zoom - 5;
+            var maxLevel = startCoord.zoom + 2;
+
+            for (var z = minLevel; z < maxLevel; z++) {
+                this.adjustVisibleLevel(this.levels[z], z, validTileKeys);
+            }
+
+            // cancel requests that aren't visible:
+            this.requestManager.clearExcept(validTileKeys);
+
+            // get newly requested tiles, sort according to current view:
+            this.requestManager.processQueue(centerDistanceCompare);
+        },
+
+        // For a given tile coordinate in a given level element, ensure that it's
+        // correctly represented in the DOM including potentially-overlapping
+        // parent and child tiles for pyramid loading.
+        //
+        // Return a list of valid (i.e. loadable?) tile keys.
+        inventoryVisibleTile: function(layer_element, tile_coord) {
+            var tile_key = tile_coord.toKey(),
+                valid_tile_keys = [tile_key];
+
+            // Check that the needed tile already exists someplace - add it to the DOM if it does.
+            if (tile_key in this.tiles) {
+                var tile = this.tiles[tile_key];
+
+                // ensure it's in the DOM:
+                if (tile.parentNode != layer_element) {
+                    layer_element.appendChild(tile);
+                    // if the provider implements reAddTile(), call it
+                    if ("reAddTile" in this.provider) {
+                        this.provider.reAddTile(tile_key, tile_coord, tile);
+                    }
+                }
+
+                return valid_tile_keys;
+            }
+
+            // Check that the needed tile has even been requested at all.
+            if (!this.requestManager.hasRequest(tile_key)) {
+                var tileToRequest = this.provider.getTile(tile_coord);
+                if (typeof tileToRequest == 'string') {
+                    this.addTileImage(tile_key, tile_coord, tileToRequest);
+                // tile must be truish
+                } else if (tileToRequest) {
+                    this.addTileElement(tile_key, tile_coord, tileToRequest);
+                }
+            }
+
+            // look for a parent tile in our image cache
+            var tileCovered = false;
+            var maxStepsOut = tile_coord.zoom;
+
+            for (var pz = 1; pz <= maxStepsOut; pz++) {
+                var parent_coord = tile_coord.zoomBy(-pz).container();
+                var parent_key = parent_coord.toKey();
+
+                // only mark it valid if we have it already
+                if (parent_key in this.tiles) {
+                    valid_tile_keys.push(parent_key);
+                    tileCovered = true;
+                    break;
+                }
+            }
+
+            // if we didn't find a parent, look at the children:
+            if (!tileCovered) {
+                var child_coord = tile_coord.zoomBy(1);
+
+                // mark everything valid whether or not we have it:
+                valid_tile_keys.push(child_coord.toKey());
+                child_coord.column += 1;
+                valid_tile_keys.push(child_coord.toKey());
+                child_coord.row += 1;
+                valid_tile_keys.push(child_coord.toKey());
+                child_coord.column -= 1;
+                valid_tile_keys.push(child_coord.toKey());
+            }
+
+            return valid_tile_keys;
+        },
+
+        tileElementsInLevel: function(level) {
+            // this is somewhat future proof, we're looking for DOM elements
+            // not necessarily <img> elements
+            var tiles = [];
+            for (var tile = level.firstChild; tile; tile = tile.nextSibling) {
+                if (tile.nodeType == 1) {
+                    tiles.push(tile);
+                }
+            }
+            return tiles;
+        },
+
+        /**
+         * For a given level, adjust visibility as a whole and discard individual
+         * tiles based on values in valid_tile_keys from inventoryVisibleTile().
+         */
+        adjustVisibleLevel: function(level, zoom, valid_tile_keys) {
+            // no tiles for this level yet
+            if (!level) return;
+
+            var scale = 1;
+            var theCoord = this.map.coordinate.copy();
+
+            if (level.childNodes.length > 0) {
+                level.style.display = 'block';
+                scale = Math.pow(2, this.map.coordinate.zoom - zoom);
+                theCoord = theCoord.zoomTo(zoom);
+            } else {
+                level.style.display = 'none';
+                return false;
+            }
+
+            var tileWidth = this.map.tileSize.x * scale;
+            var tileHeight = this.map.tileSize.y * scale;
+            var center = new MM.Point(this.map.dimensions.x/2, this.map.dimensions.y/2);
+            var tiles = this.tileElementsInLevel(level);
+
+            while (tiles.length) {
+                var tile = tiles.pop();
+
+                if (!valid_tile_keys[tile.id]) {
+                    this.provider.releaseTile(tile.coord);
+                    this.requestManager.clearRequest(tile.coord.toKey());
+                    level.removeChild(tile);
+                } else {
+                    // position tiles
+                    MM.moveElement(tile, {
+                        x: Math.round(center.x +
+                            (tile.coord.column - theCoord.column) * tileWidth),
+                        y: Math.round(center.y +
+                            (tile.coord.row - theCoord.row) * tileHeight),
+                        scale: scale,
+                        // TODO: pass only scale or only w/h
+                        width: this.map.tileSize.x,
+                        height: this.map.tileSize.y
+                    });
+                }
+            }
+        },
+
+        createOrGetLevel: function(zoom) {
+            if (zoom in this.levels) {
+                return this.levels[zoom];
+            }
+
+            var level = document.createElement('div');
+            level.id = this.parent.id + '-zoom-' + zoom;
+            level.style.cssText = 'position: absolute; top: 0px; left: 0px; width: 100%; height: 100%; margin: 0; padding: 0;';
+            level.style.zIndex = zoom;
+
+            this.parent.appendChild(level);
+            this.levels[zoom] = level;
+
+            return level;
+        },
+
+        addTileImage: function(key, coord, url) {
+            this.requestManager.requestTile(key, coord, url);
+        },
+
+        addTileElement: function(key, coordinate, element) {
+            // Expected in draw()
+            element.id = key;
+            element.coord = coordinate.copy();
+            this.positionTile(element);
+        },
+
+        positionTile: function(tile) {
+            // position this tile (avoids a full draw() call):
+            var theCoord = this.map.coordinate.zoomTo(tile.coord.zoom);
+
+            // Start tile positioning and prevent drag for modern browsers
+            tile.style.cssText = 'position:absolute;-webkit-user-select:none;' +
+                '-webkit-user-drag:none;-moz-user-drag:none;-webkit-transform-origin:0 0;' +
+                '-moz-transform-origin:0 0;-o-transform-origin:0 0;-ms-transform-origin:0 0;' +
+                'width:' + this.map.tileSize.x + 'px; height: ' + this.map.tileSize.y + 'px;';
+
+            // Prevent drag for IE
+            tile.ondragstart = function() { return false; };
+
+            var scale = Math.pow(2, this.map.coordinate.zoom - tile.coord.zoom);
+
+            MM.moveElement(tile, {
+                x: Math.round((this.map.dimensions.x/2) +
+                    (tile.coord.column - theCoord.column) * this.map.tileSize.x),
+                y: Math.round((this.map.dimensions.y/2) +
+                    (tile.coord.row - theCoord.row) * this.map.tileSize.y),
+                scale: scale,
+                // TODO: pass only scale or only w/h
+                width: this.map.tileSize.x,
+                height: this.map.tileSize.y
+            });
+
+            // add tile to its level
+            var theLevel = this.levels[tile.coord.zoom];
+            theLevel.appendChild(tile);
+
+            // Support style transition if available.
+            tile.className = 'map-tile-loaded';
+
+            // ensure the level is visible if it's still the current level
+            if (Math.round(this.map.coordinate.zoom) == tile.coord.zoom) {
+                theLevel.style.display = 'block';
+            }
+
+            // request a lazy redraw of all levels
+            // this will remove tiles that were only visible
+            // to cover this tile while it loaded:
+            this.requestRedraw();
+        },
+
+        _redrawTimer: undefined,
+
+        requestRedraw: function() {
+            // we'll always draw within 1 second of this request,
+            // sometimes faster if there's already a pending redraw
+            // this is used when a new tile arrives so that we clear
+            // any parent/child tiles that were only being displayed
+            // until the tile loads at the right zoom level
+            if (!this._redrawTimer) {
+                this._redrawTimer = setTimeout(this.getRedraw(), 1000);
+            }
+        },
+
+        _redraw: null,
+
+        getRedraw: function() {
+            // let's only create this closure once...
+            if (!this._redraw) {
+                var theLayer = this;
+                this._redraw = function() {
+                    theLayer.draw();
+                    theLayer._redrawTimer = 0;
+                };
+            }
+            return this._redraw;
+        },
+
+        setProvider: function(newProvider) {
+            var firstProvider = (this.provider === null);
+
+            // if we already have a provider the we'll need to
+            // clear the DOM, cancel requests and redraw
+            if (!firstProvider) {
+                this.requestManager.clear();
+
+                for (var name in this.levels) {
+                    if (this.levels.hasOwnProperty(name)) {
+                        var level = this.levels[name];
+
+                        while (level.firstChild) {
+                            this.provider.releaseTile(level.firstChild.coord);
+                            level.removeChild(level.firstChild);
+                        }
+                    }
+                }
+            }
+
+            // first provider or not we'll init/reset some values...
+            this.tiles = {};
+
+            // for later: check geometry of old provider and set a new coordinate center
+            // if needed (now? or when?)
+            this.provider = newProvider;
+
+            if (!firstProvider) {
+                this.draw();
+            }
+        },
+
+        // Enable a layer and show its dom element
+        enable: function() {
+            this.enabled = true;
+            this.parent.style.display = '';
+            this.draw();
+        },
+
+        // Disable a layer, don't display in DOM, clear all requests
+        disable: function() {
+            this.enabled = false;
+            this.requestManager.clear();
+            this.parent.style.display = 'none';
+        },
+
+        // Remove this layer from the DOM, cancel all of its requests
+        // and unbind any callbacks that are bound to it.
+        destroy: function() {
+            this.requestManager.clear();
+            this.requestManager.removeCallback('requestcomplete', this.getTileComplete());
+            this.requestManager.removeCallback('requesterror', this.getTileError());
+            // TODO: does requestManager need a destroy function too?
+            this.provider = null;
+            // If this layer was ever attached to the DOM, detach it.
+            if (this.parent.parentNode) {
+              this.parent.parentNode.removeChild(this.parent);
+            }
+            this.map = null;
+        }
+    };
+
     // Map
 
     // Instance of a map intended for drawing to a div.
     //
     //  * `parent` (required DOM element)
     //      Can also be an ID of a DOM element
-    //  * `provider` (required MapProvider)
-    //      Provides tile URLs and map projections
+    //  * `layerOrLayers` (required MM.Layer or Array of MM.Layers)
+    //      each one must implement draw(), destroy(), have a .parent DOM element and a .map property
+    //      (an array of URL templates or MM.MapProviders is also acceptable)
     //  * `dimensions` (optional Point)
     //      Size of map to create
     //  * `eventHandlers` (optional Array)
     //      If empty or null MouseHandler will be used
     //      Otherwise, each handler will be called with init(map)
-    MM.Map = function(parent, provider, dimensions, eventHandlers) {
+    MM.Map = function(parent, layerOrLayers, dimensions, eventHandlers) {
 
         if (typeof parent == 'string') {
             parent = document.getElementById(parent);
@@ -1313,55 +2032,52 @@ if (!com) {
             this.parent.style.position = 'relative';
         }
 
+        this.layers = [];
+
+        if (!layerOrLayers) {
+            layerOrLayers = [];
+        }
+
+        if (!(layerOrLayers instanceof Array)) {
+            layerOrLayers = [ layerOrLayers ];
+        }
+
+        for (var i = 0; i < layerOrLayers.length; i++) {
+            this.addLayer(layerOrLayers[i]);
+        }
+
+        // default to Google-y Mercator style maps
+        this.projection = new MM.MercatorProjection(0,
+            MM.deriveTransformation(-Math.PI,  Math.PI, 0, 0,
+                                     Math.PI,  Math.PI, 1, 0,
+                                    -Math.PI, -Math.PI, 0, 1));
+        this.tileSize = new MM.Point(256, 256);
+
+        // default 0-18 zoom level
+        // with infinite horizontal pan and clamped vertical pan
+        this.coordLimits = [
+            new MM.Coordinate(0,-Infinity,0),           // top left outer
+            new MM.Coordinate(1,Infinity,0).zoomTo(18) // bottom right inner
+        ];
+
+        // eyes towards null island
+        this.coordinate = new MM.Coordinate(0.5, 0.5, 0);
+
         // if you don't specify dimensions we assume you want to fill the parent
         // unless the parent has no w/h, in which case we'll still use a default
         if (!dimensions) {
-            var w = this.parent.offsetWidth;
-            var h = this.parent.offsetHeight;
-            if (!w) {
-                w = 640;
-                this.parent.style.width = w + 'px';
-            }
-            if (!h) {
-                h = 480;
-                this.parent.style.height = h + 'px';
-            }
-            dimensions = new MM.Point(w, h);
-            // FIXME: listeners like this will stop the map being removed cleanly?
-            // when does removeEvent get called?
-            var theMap = this;
-            MM.addEvent(window, 'resize', function(event) {
-                // don't call setSize here because it sets parent.style.width/height
-                // and setting the height breaks percentages and default styles
-                theMap.dimensions = new MM.Point(theMap.parent.offsetWidth, theMap.parent.offsetHeight);
-                theMap.draw();
-                theMap.dispatchCallback('resized', [theMap.dimensions]);
-            });
-        }
-        else {
+            dimensions = new MM.Point(this.parent.offsetWidth,
+                                      this.parent.offsetHeight);
+            this.autoSize = true;
+            // use destroy to get rid of this handler from the DOM
+            MM.addEvent(window, 'resize', this.windowResize());
+        } else {
+            this.autoSize = false;
+            // don't call setSize here because it calls draw()
             this.parent.style.width = Math.round(dimensions.x) + 'px';
             this.parent.style.height = Math.round(dimensions.y) + 'px';
         }
-
         this.dimensions = dimensions;
-
-        this.requestManager = new MM.RequestManager(this.parent);
-        this.requestManager.addCallback('requestcomplete', this.getTileComplete());
-
-        this.layers = {};
-
-        this.layerParent = document.createElement('div');
-        this.layerParent.id = this.parent.id + '-layers';
-        // this text is also used in createOrGetLayer
-        this.layerParent.style.cssText = 'position: absolute; top: 0px; left: 0px; width: 100%; height: 100%; margin: 0; padding: 0; z-index: 0';
-
-        this.parent.appendChild(this.layerParent);
-
-        this.coordinate = new MM.Coordinate(0.5, 0.5, 0);
-
-        this.setProvider(provider);
-
-        this.enablePyramidLoading = false;
 
         this.callbackManager = new MM.CallbackManager(this, [
             'zoomed',
@@ -1374,13 +2090,15 @@ if (!com) {
 
         // set up handlers last so that all required attributes/functions are in place if needed
         if (eventHandlers === undefined) {
-            this.eventHandlers = [];
-            this.eventHandlers.push(new MM.MouseHandler(this));
+            this.eventHandlers = [
+                MM.MouseHandler().init(this),
+                MM.TouchHandler().init(this)
+            ];
         } else {
             this.eventHandlers = eventHandlers;
             if (eventHandlers instanceof Array) {
-                for (var i = 0; i < eventHandlers.length; i++) {
-                    eventHandlers[i].init(this);
+                for (var j = 0; j < eventHandlers.length; j++) {
+                    eventHandlers[j].init(this);
                 }
             }
         }
@@ -1389,26 +2107,22 @@ if (!com) {
 
     MM.Map.prototype = {
 
-        parent: null,
-        provider: null,
-        dimensions: null,
-        coordinate: null,
+        parent: null,          // DOM Element
+        dimensions: null,      // MM.Point with x/y size of parent element
 
-        tiles: null,
-        layers: null,
-        layerParent: null,
+        projection: null,      // MM.Projection of first known layer
+        coordinate: null,      // Center of map MM.Coordinate with row/column/zoom
+        tileSize: null,        // MM.Point with x/y size of tiles
 
-        requestManager: null,
+        coordLimits: null,     // Array of [ topLeftOuter, bottomLeftInner ] MM.Coordinates
 
-        tileCacheSize: null,
+        layers: null,          // Array of MM.Layer (interface = .draw(), .destroy(), .parent and .map)
 
-        maxTileCacheSize: null,
-        recentTiles: null,
-        recentTilesById: null,
-        recentTileSize: null,
+        callbackManager: null, // MM.CallbackManager, handles map events
 
-        callbackManager: null,
-        eventHandlers: null,
+        eventHandlers: null,   // Array of interaction handlers, just a MM.MouseHandler by default
+
+        autoSize: null,        // Boolean, true if we have a window resize listener
 
         toString: function() {
             return 'Map(#' + this.parent.id + ')';
@@ -1418,22 +2132,46 @@ if (!com) {
 
         addCallback: function(event, callback) {
             this.callbackManager.addCallback(event, callback);
+            return this;
         },
 
         removeCallback: function(event, callback) {
             this.callbackManager.removeCallback(event, callback);
+            return this;
         },
 
         dispatchCallback: function(event, message) {
             this.callbackManager.dispatchCallback(event, message);
+            return this;
+        },
+
+        windowResize: function() {
+            if (!this._windowResize) {
+                var theMap = this;
+                this._windowResize = function(event) {
+                    // don't call setSize here because it sets parent.style.width/height
+                    // and setting the height breaks percentages and default styles
+                    theMap.dimensions = new MM.Point(theMap.parent.offsetWidth, theMap.parent.offsetHeight);
+                    theMap.draw();
+                    theMap.dispatchCallback('resized', [theMap.dimensions]);
+                };
+            }
+            return this._windowResize;
+        },
+
+        // A convenience function to restrict interactive zoom ranges.
+        // (you should also adjust map provider to restrict which tiles get loaded,
+        // or modify map.coordLimits and provider.tileLimits for finer control)
+        setZoomRange: function(minZoom, maxZoom) {
+            this.coordLimits[0] = this.coordLimits[0].zoomTo(minZoom);
+            this.coordLimits[1] = this.coordLimits[1].zoomTo(maxZoom);
+            return this;
         },
 
         // zooming
         zoomBy: function(zoomOffset) {
-            var theMap = this;
-            this.coordinate = this.coordinate.zoomBy(zoomOffset);
-
-            MM.getFrame(function() { theMap.draw(); });
+            this.coordinate = this.enforceLimits(this.coordinate.zoomBy(zoomOffset));
+            MM.getFrame(this.getRedraw());
             this.dispatchCallback('zoomed', zoomOffset);
             return this;
         },
@@ -1445,7 +2183,7 @@ if (!com) {
         zoomByAbout: function(zoomOffset, point) {
             var location = this.pointLocation(point);
 
-            this.coordinate = this.coordinate.zoomBy(zoomOffset);
+            this.coordinate = this.enforceLimits(this.coordinate.zoomBy(zoomOffset));
             var newPoint = this.locationPoint(location);
 
             this.dispatchCallback('zoomed', zoomOffset);
@@ -1454,29 +2192,16 @@ if (!com) {
 
         // panning
         panBy: function(dx, dy) {
-            var theMap = this;
-            this.coordinate.column -= dx / this.provider.tileWidth;
-            this.coordinate.row -= dy / this.provider.tileHeight;
+            this.coordinate.column -= dx / this.tileSize.x;
+            this.coordinate.row -= dy / this.tileSize.y;
+
+            this.coordinate = this.enforceLimits(this.coordinate);
 
             // Defer until the browser is ready to draw.
-            MM.getFrame(function() { theMap.draw(); });
+            MM.getFrame(this.getRedraw());
             this.dispatchCallback('panned', [dx, dy]);
             return this;
         },
-
-        /*
-        panZoom: function(dx, dy, zoom) {
-            var theMap = this;
-            this.coordinate.column -= dx / this.provider.tileWidth;
-            this.coordinate.row -= dy / this.provider.tileHeight;
-            this.coordinate = this.coordinate.zoomTo(zoom);
-
-            // Defer until the browser is ready to draw.
-            MM.getFrame(function() { theMap.draw()});
-            this.dispatchCallback('panned', [dx, dy]);
-            return this;
-        },
-        */
 
         panLeft: function() { return this.panBy(100, 0); },
         panRight: function() { return this.panBy(-100, 0); },
@@ -1489,17 +2214,21 @@ if (!com) {
         },
 
         setCenterZoom: function(location, zoom) {
-            this.coordinate = this.provider.locationCoordinate(location).zoomTo(parseFloat(zoom) || 0);
-            this.draw();
+            this.coordinate = this.projection.locationCoordinate(location).zoomTo(parseFloat(zoom) || 0);
+            MM.getFrame(this.getRedraw());
             this.dispatchCallback('centered', [location, zoom]);
             return this;
         },
 
-        setExtent: function(locations) {
+        extentCoordinate: function(locations, precise) {
+            // coerce locations to an array if it's a Extent instance
+            if (locations instanceof MM.Extent) {
+                locations = locations.toArray();
+            }
 
             var TL, BR;
             for (var i = 0; i < locations.length; i++) {
-                var coordinate = this.provider.locationCoordinate(locations[i]);
+                var coordinate = this.projection.locationCoordinate(locations[i]);
                 if (TL) {
                     TL.row = Math.min(TL.row, coordinate.row);
                     TL.column = Math.min(TL.column, coordinate.column);
@@ -1518,38 +2247,41 @@ if (!com) {
             var height = this.dimensions.y + 1;
 
             // multiplication factor between horizontal span and map width
-            var hFactor = (BR.column - TL.column) / (width / this.provider.tileWidth);
+            var hFactor = (BR.column - TL.column) / (width / this.tileSize.x);
 
             // multiplication factor expressed as base-2 logarithm, for zoom difference
             var hZoomDiff = Math.log(hFactor) / Math.log(2);
 
             // possible horizontal zoom to fit geographical extent in map width
-            var hPossibleZoom = TL.zoom - Math.ceil(hZoomDiff);
+            var hPossibleZoom = TL.zoom - (precise ? hZoomDiff : Math.ceil(hZoomDiff));
 
             // multiplication factor between vertical span and map height
-            var vFactor = (BR.row - TL.row) / (height / this.provider.tileHeight);
+            var vFactor = (BR.row - TL.row) / (height / this.tileSize.y);
 
             // multiplication factor expressed as base-2 logarithm, for zoom difference
             var vZoomDiff = Math.log(vFactor) / Math.log(2);
 
             // possible vertical zoom to fit geographical extent in map height
-            var vPossibleZoom = TL.zoom - Math.ceil(vZoomDiff);
+            var vPossibleZoom = TL.zoom - (precise ? vZoomDiff : Math.ceil(vZoomDiff));
 
             // initial zoom to fit extent vertically and horizontally
             var initZoom = Math.min(hPossibleZoom, vPossibleZoom);
 
-            // additionally, make sure it's not outside the boundaries set by provider limits
-            // this also catches Infinity stuff
-            initZoom = Math.min(initZoom, this.provider.outerLimits()[1].zoom);
-            initZoom = Math.max(initZoom, this.provider.outerLimits()[0].zoom);
+            // additionally, make sure it's not outside the boundaries set by map limits
+            initZoom = Math.min(initZoom, this.coordLimits[1].zoom);
+            initZoom = Math.max(initZoom, this.coordLimits[0].zoom);
 
             // coordinate of extent center
             var centerRow = (TL.row + BR.row) / 2;
             var centerColumn = (TL.column + BR.column) / 2;
             var centerZoom = TL.zoom;
+            return new MM.Coordinate(centerRow, centerColumn, centerZoom).zoomTo(initZoom);
+        },
 
-            this.coordinate = new MM.Coordinate(centerRow, centerColumn, centerZoom).zoomTo(initZoom);
-            this.draw();
+        setExtent: function(locations, precise) {
+            this.coordinate = this.extentCoordinate(locations, precise);
+            this.draw(); // draw calls enforceLimits
+            // (if you switch to getFrame, call enforceLimits first)
 
             this.dispatchCallback('extentset', locations);
             return this;
@@ -1557,17 +2289,19 @@ if (!com) {
 
         // Resize the map's container `<div>`, redrawing the map and triggering
         // `resized` to make sure that the map's presentation is still correct.
-        setSize: function(dimensionsOrX, orY) {
-            if (dimensionsOrX.hasOwnProperty('x') && dimensionsOrX.hasOwnProperty('y')) {
-                this.dimensions = dimensionsOrX;
-            }
-            else if (orY !== undefined && !isNaN(orY)) {
-                this.dimensions = new MM.Point(dimensionsOrX, orY);
-            }
+        setSize: function(dimensions) {
+            // Ensure that, whether a raw object or a Point object is passed,
+            // this.dimensions will be a Point.
+            this.dimensions = new MM.Point(dimensions.x, dimensions.y);
             this.parent.style.width = Math.round(this.dimensions.x) + 'px';
             this.parent.style.height = Math.round(this.dimensions.y) + 'px';
-            this.draw();
-            this.dispatchCallback('resized', [this.dimensions]);
+            if (this.autoSize) {
+                MM.removeEvent(window, 'resize', this.windowResize());
+                this.autoSize = false;
+            }
+            this.draw(); // draw calls enforceLimits
+            // (if you switch to getFrame, call enforceLimits first)
+            this.dispatchCallback('resized', this.dimensions);
             return this;
         },
 
@@ -1580,8 +2314,8 @@ if (!com) {
 
             // distance from the center of the map
             var point = new MM.Point(this.dimensions.x / 2, this.dimensions.y / 2);
-            point.x += this.provider.tileWidth * (coord.column - this.coordinate.column);
-            point.y += this.provider.tileHeight * (coord.row - this.coordinate.row);
+            point.x += this.tileSize.x * (coord.column - this.coordinate.column);
+            point.y += this.tileSize.y * (coord.row - this.coordinate.row);
 
             return point;
         },
@@ -1591,34 +2325,59 @@ if (!com) {
         pointCoordinate: function(point) {
             // new point coordinate reflecting distance from map center, in tile widths
             var coord = this.coordinate.copy();
-            coord.column += (point.x - this.dimensions.x / 2) / this.provider.tileWidth;
-            coord.row += (point.y - this.dimensions.y / 2) / this.provider.tileHeight;
+            coord.column += (point.x - this.dimensions.x / 2) / this.tileSize.x;
+            coord.row += (point.y - this.dimensions.y / 2) / this.tileSize.y;
 
             return coord;
         },
 
+        // Return an MM.Coordinate (row,col,zoom) for an MM.Location (lat,lon).
+        locationCoordinate: function(location) {
+            return this.projection.locationCoordinate(location);
+        },
+
+        // Return an MM.Location (lat,lon) for an MM.Coordinate (row,col,zoom).
+        coordinateLocation: function(coordinate) {
+            return this.projection.coordinateLocation(coordinate);
+        },
+
         // Return an x, y point on the map image for a given geographical location.
         locationPoint: function(location) {
-            return this.coordinatePoint(this.provider.locationCoordinate(location));
+            return this.coordinatePoint(this.locationCoordinate(location));
         },
 
         // Return a geographical location on the map image for a given x, y point.
         pointLocation: function(point) {
-            return this.provider.coordinateLocation(this.pointCoordinate(point));
+            return this.coordinateLocation(this.pointCoordinate(point));
         },
 
         // inspecting
-
         getExtent: function() {
-            var extent = [];
-            extent.push(this.pointLocation(new MM.Point(0, 0)));
-            extent.push(this.pointLocation(this.dimensions));
-            return extent;
+            return new MM.Extent(
+                this.pointLocation(new MM.Point(0, 0)),
+                this.pointLocation(this.dimensions)
+            );
+        },
+
+        extent: function(locations, precise) {
+            if (locations) {
+                return this.setExtent(locations, precise);
+            } else {
+                return this.getExtent();
+            }
         },
 
         // Get the current centerpoint of the map, returning a `Location`
         getCenter: function() {
-            return this.provider.coordinateLocation(this.coordinate);
+            return this.projection.coordinateLocation(this.coordinate);
+        },
+
+        center: function(location) {
+            if (location) {
+                return this.setCenter(location);
+            } else {
+                return this.getCenter();
+            }
         },
 
         // Get the current zoom level of the map, returning a number
@@ -1626,70 +2385,185 @@ if (!com) {
             return this.coordinate.zoom;
         },
 
-        // Replace the existing provider or set a provider on the map, clearing
-        // out existing tiles and requests.
-        setProvider: function(newProvider) {
-
-            var firstProvider = false;
-            if (this.provider === null) {
-                firstProvider = true;
+        zoom: function(zoom) {
+            if (zoom !== undefined) {
+                return this.setZoom(zoom);
+            } else {
+                return this.getZoom();
             }
+        },
 
-            // if we already have a provider the we'll need to
-            // clear the DOM, cancel requests and redraw
-            if (!firstProvider) {
+        // return a copy of the layers array
+        getLayers: function() {
+            return this.layers.slice();
+        },
 
-                this.requestManager.clear();
-
-                for (var name in this.layers) {
-                    if (this.layers.hasOwnProperty(name)) {
-                        var layer = this.layers[name];
-                        while (layer.firstChild) {
-                            layer.removeChild(layer.firstChild);
-                        }
-                    }
-                }
+        // return the first layer with given name
+        getLayer: function(name) {
+            for (var i = 0; i < this.layers.length; i++) {
+                if (name == this.layers[i].name)
+                    return this.layers[i];
             }
+        },
 
-            // first provider or not we'll init/reset some values...
+        // return the layer at the given index
+        getLayerAt: function(index) {
+            return this.layers[index];
+        },
 
-            this.tiles = {};
-
-            this.tileCacheSize = 0;
-
-            this.maxTileCacheSize = 64;
-            this.recentTiles = [];
-            this.recentTilesById = {};
-
-            // for later: check geometry of old provider and set a new coordinate center
-            // if needed (now? or when?)
-
-            this.provider = newProvider;
-
-            if (!firstProvider) {
-                this.draw();
+        // put the given layer on top of all the others
+        // Since this is called for the first layer, which is by definition
+        // added before the map has a valid `coordinate`, we request
+        // a redraw only if the map has a center coordinate.
+        addLayer: function(layer) {
+            this.layers.push(layer);
+            this.parent.appendChild(layer.parent);
+            layer.map = this; // TODO: remove map property from MM.Layer?
+            if (this.coordinate) {
+              MM.getFrame(this.getRedraw());
             }
             return this;
         },
 
-        // stats
+        // find the given layer and remove it
+        removeLayer: function(layer) {
+            for (var i = 0; i < this.layers.length; i++) {
+                if (layer == this.layers[i] || layer == this.layers[i].name) {
+                    this.removeLayerAt(i);
+                    break;
+                }
+            }
+            return this;
+        },
 
-        /*
-        getStats: function() {
-            return {
-                'Request Queue Length': this.requestManager.requestQueue.length,
-                'Open Request Count': this.requestManager.requestCount,
-                'Tile Cache Size': this.tileCacheSize,
-                'Tiles On Screen': this.parent.getElementsByTagName('img').length
-            };
-        },*/
+        // replace the current layer at the given index with the given layer
+        setLayerAt: function(index, layer) {
 
-        // Prevent the user from navigating the map outside the `outerLimits`
-        // of the map's provider.
-        enforceLimits: function(coord) {
-            coord = coord.copy();
-            var limits = this.provider.outerLimits();
+            if (index < 0 || index >= this.layers.length) {
+                throw new Error('invalid index in setLayerAt(): ' + index);
+            }
+
+            if (this.layers[index] != layer) {
+
+                // clear existing layer at this index
+                if (index < this.layers.length) {
+                    var other = this.layers[index];
+                    this.parent.insertBefore(layer.parent, other.parent);
+                    other.destroy();
+                } else {
+                // Or if this will be the last layer, it can be simply appended
+                    this.parent.appendChild(layer.parent);
+                }
+
+                this.layers[index] = layer;
+                layer.map = this; // TODO: remove map property from MM.Layer
+
+                MM.getFrame(this.getRedraw());
+            }
+
+            return this;
+        },
+
+        // put the given layer at the given index, moving others if necessary
+        insertLayerAt: function(index, layer) {
+
+            if (index < 0 || index > this.layers.length) {
+                throw new Error('invalid index in insertLayerAt(): ' + index);
+            }
+
+            if (index == this.layers.length) {
+                // it just gets tacked on to the end
+                this.layers.push(layer);
+                this.parent.appendChild(layer.parent);
+            } else {
+                // it needs to get slipped in amongst the others
+                var other = this.layers[index];
+                this.parent.insertBefore(layer.parent, other.parent);
+                this.layers.splice(index, 0, layer);
+            }
+
+            layer.map = this; // TODO: remove map property from MM.Layer
+
+            MM.getFrame(this.getRedraw());
+
+            return this;
+        },
+
+        // remove the layer at the given index, call .destroy() on the layer
+        removeLayerAt: function(index) {
+            if (index < 0 || index >= this.layers.length) {
+                throw new Error('invalid index in removeLayer(): ' + index);
+            }
+
+            // gone baby gone.
+            var old = this.layers[index];
+            this.layers.splice(index, 1);
+            old.destroy();
+
+            return this;
+        },
+
+        // switch the stacking order of two layers, by index
+        swapLayersAt: function(i, j) {
+
+            if (i < 0 || i >= this.layers.length || j < 0 || j >= this.layers.length) {
+                throw new Error('invalid index in swapLayersAt(): ' + index);
+            }
+
+            var layer1 = this.layers[i],
+                layer2 = this.layers[j],
+                dummy = document.createElement('div');
+
+            // kick layer2 out, replace it with the dummy.
+            this.parent.replaceChild(dummy, layer2.parent);
+
+            // put layer2 back in and kick layer1 out
+            this.parent.replaceChild(layer2.parent, layer1.parent);
+
+            // put layer1 back in and ditch the dummy
+            this.parent.replaceChild(layer1.parent, dummy);
+
+            // now do it to the layers array
+            this.layers[i] = layer2;
+            this.layers[j] = layer1;
+
+            return this;
+        },
+
+        // Enable and disable layers.
+        // Disabled layers are not displayed, are not drawn, and do not request
+        // tiles. They do maintain their layer index on the map.
+        enableLayer: function(name) {
+            var l = this.getLayer(name);
+            if (l) l.enable();
+            return this;
+        },
+
+        enableLayerAt: function(index) {
+            var l = this.getLayerAt(index);
+            if (l) l.enable();
+            return this;
+        },
+
+        disableLayer: function(name) {
+            var l = this.getLayer(name);
+            if (l) l.disable();
+            return this;
+        },
+
+        disableLayerAt: function(index) {
+            var l = this.getLayerAt(index);
+            if (l) l.disable();
+            return this;
+        },
+
+
+        // limits
+
+        enforceZoomLimits: function(coord) {
+            var limits = this.coordLimits;
             if (limits) {
+                // clamp zoom level:
                 var minZoom = limits[0].zoom;
                 var maxZoom = limits[1].zoom;
                 if (coord.zoom < minZoom) {
@@ -1702,244 +2576,85 @@ if (!com) {
             return coord;
         },
 
+        enforcePanLimits: function(coord) {
+
+            if (this.coordLimits) {
+
+                coord = coord.copy();
+
+                // clamp pan:
+                var topLeftLimit = this.coordLimits[0].zoomTo(coord.zoom);
+                var bottomRightLimit = this.coordLimits[1].zoomTo(coord.zoom);
+                var currentTopLeft = this.pointCoordinate(new MM.Point(0, 0))
+                    .zoomTo(coord.zoom);
+                var currentBottomRight = this.pointCoordinate(this.dimensions)
+                    .zoomTo(coord.zoom);
+
+                // this handles infinite limits:
+                // (Infinity - Infinity) is Nan
+                // NaN is never less than anything
+                if (bottomRightLimit.row - topLeftLimit.row <
+                    currentBottomRight.row - currentTopLeft.row) {
+                    // if the limit is smaller than the current view center it
+                    coord.row = (bottomRightLimit.row + topLeftLimit.row) / 2;
+                } else {
+                    if (currentTopLeft.row < topLeftLimit.row) {
+                        coord.row += topLeftLimit.row - currentTopLeft.row;
+                    } else if (currentBottomRight.row > bottomRightLimit.row) {
+                        coord.row -= currentBottomRight.row - bottomRightLimit.row;
+                    }
+                }
+                if (bottomRightLimit.column - topLeftLimit.column <
+                    currentBottomRight.column - currentTopLeft.column) {
+                    // if the limit is smaller than the current view, center it
+                    coord.column = (bottomRightLimit.column + topLeftLimit.column) / 2;
+                } else {
+                    if (currentTopLeft.column < topLeftLimit.column) {
+                        coord.column += topLeftLimit.column - currentTopLeft.column;
+                    } else if (currentBottomRight.column > bottomRightLimit.column) {
+                        coord.column -= currentBottomRight.column - bottomRightLimit.column;
+                    }
+                }
+            }
+
+            return coord;
+        },
+
+        // Prevent accidentally navigating outside the `coordLimits` of the map.
+        enforceLimits: function(coord) {
+            return this.enforcePanLimits(this.enforceZoomLimits(coord));
+        },
+
+        // rendering
+
         // Redraw the tiles on the map, reusing existing tiles.
         draw: function() {
-
             // make sure we're not too far in or out:
             this.coordinate = this.enforceLimits(this.coordinate);
 
-            // if we're in between zoom levels, we need to choose the nearest:
-            var baseZoom = Math.round(this.coordinate.zoom);
-
-            // these are the top left and bottom right tile coordinates
-            // we'll be loading everything in between:
-            var startCoord = this.pointCoordinate(new MM.Point(0, 0)).zoomTo(baseZoom).container();
-            var endCoord = this.pointCoordinate(this.dimensions).zoomTo(baseZoom).container().right().down();
-
-            var tilePadding = 0;
-            if (tilePadding) {
-                startCoord = startCoord.left(tilePadding).up(tilePadding);
-                endCoord = endCoord.right(tilePadding).down(tilePadding);
-            }
-
-            // tiles with invalid keys will be removed from visible layers
-            // requests for tiles with invalid keys will be canceled
-            // (this object maps from a tile key to a boolean)
-            var validTileKeys = { };
-
-            // make sure we have a container for tiles in the current layer
-            var thisLayer = this.createOrGetLayer(startCoord.zoom);
-
-            // use this coordinate for generating keys, parents and children:
-            var tileCoord = startCoord.copy();
-
-            for (tileCoord.column = startCoord.column;
-                tileCoord.column <= endCoord.column;
-                tileCoord.column += 1) {
-                for (tileCoord.row = startCoord.row;
-                    tileCoord.row <= endCoord.row;
-                    tileCoord.row += 1) {
-                    var tileKey = tileCoord.toKey();
-                    validTileKeys[tileKey] = true;
-                    if (tileKey in this.tiles) {
-                        var tile = this.tiles[tileKey];
-                        // ensure it's in the DOM:
-                        if (tile.parentNode != thisLayer) {
-                            thisLayer.appendChild(tile);
-                        }
-                    } else {
-                        if (!this.requestManager.hasRequest(tileKey)) {
-                            var tileURL = this.provider.getTileUrl(tileCoord);
-                            this.requestManager.requestTile(tileKey, tileCoord, tileURL);
-                        }
-                        // look for a parent tile in our image cache
-                        var tileCovered = false;
-                        var maxStepsOut = tileCoord.zoom;
-                        for (var pz = 1; pz <= maxStepsOut; pz++) {
-                            var parentCoord = tileCoord.zoomBy(-pz).container();
-                            var parentKey = parentCoord.toKey();
-
-                            if (this.enablePyramidLoading) {
-                                // mark all parent tiles valid
-                                validTileKeys[parentKey] = true;
-                                var parentLayer = this.createOrGetLayer(parentCoord.zoom);
-                                /* parentLayer.coordinate = parentCoord.copy(); */
-                                if (parentKey in this.tiles) {
-                                    var parentTile = this.tiles[parentKey];
-                                    if (parentTile.parentNode != parentLayer) {
-                                        parentLayer.appendChild(parentTile);
-                                    }
-                                } else if (!this.requestManager.hasRequest(parentKey)) {
-                                    // force load of parent tiles we don't already have
-                                    this.requestManager.requestTile(parentKey, parentCoord,
-                                        this.provider.getTileUrl(parentCoord));
-                                }
-                            } else {
-                                // only mark it valid if we have it already
-                                if (parentKey in this.tiles) {
-                                    validTileKeys[parentKey] = true;
-                                    tileCovered = true;
-                                    break;
-                                }
-                            }
-
-                        }
-                        // if we didn't find a parent, look at the children:
-                        if (!tileCovered && !this.enablePyramidLoading) {
-                            var childCoord = tileCoord.zoomBy(1);
-                            // mark everything valid whether or not we have it:
-                            validTileKeys[childCoord.toKey()] = true;
-                            childCoord.column += 1;
-                            validTileKeys[childCoord.toKey()] = true;
-                            childCoord.row += 1;
-                            validTileKeys[childCoord.toKey()] = true;
-                            childCoord.column -= 1;
-                            validTileKeys[childCoord.toKey()] = true;
-                        }
+            // if we don't have dimensions, check the parent size
+            if (this.dimensions.x <= 0 || this.dimensions.y <= 0) {
+                if (this.autoSize) {
+                    // maybe the parent size has changed?
+                    var w = this.parent.offsetWidth,
+                        h = this.parent.offsetHeight;
+                    this.dimensions = new MM.Point(w,h);
+                    if (w <= 0 || h <= 0) {
+                        return;
                     }
-                }
-            }
-
-            // i from i to zoom-5 are layers that would be scaled too big,
-            // i from zoom+2 to layers.length are layers that would be
-            // scaled too small (and tiles would be too numerous)
-            for (var name in this.layers) {
-                if (this.layers.hasOwnProperty(name)) {
-                    var zoom = parseInt(name, 10);
-                    if (zoom >= startCoord.zoom - 5 && zoom < startCoord.zoom + 2) {
-                        continue;
-                    }
-                    var layer = this.layers[name];
-                    layer.style.display = 'none';
-                    var visibleTiles = layer.getElementsByTagName('img');
-                    for (var j = visibleTiles.length - 1; j >= 0; j--) {
-                        layer.removeChild(visibleTiles[j]);
-                    }
-                }
-            }
-
-            // for tracking time of tile usage:
-            var now = new Date().getTime();
-
-            // layers we want to see, if they have tiles in validTileKeys
-            var minLayer = startCoord.zoom - 5;
-            var maxLayer = startCoord.zoom + 2;
-            for (var i = minLayer; i < maxLayer; i++) {
-
-                var layer = this.layers[i];
-
-                if (!layer) {
-                    // no tiles for this layer yet
-                    continue;
-                }
-
-
-                // getElementsByTagName is x10 faster than childNodes, and
-                // let's reuse the access.
-                var scale = 1,
-                    theCoord = this.coordinate.copy(),
-                    visibleTiles = layer.getElementsByTagName('img');
-
-                if (visibleTiles.length > 0) {
-                    layer.style.display = 'block';
-                    scale = Math.pow(2, this.coordinate.zoom - i);
-                    theCoord = theCoord.zoomTo(i);
                 } else {
-                    layer.style.display = 'none';
-                }
-
-                var tileWidth = this.provider.tileWidth * scale,
-                    tileHeight = this.provider.tileHeight * scale,
-                    center = new MM.Point(this.dimensions.x / 2, this.dimensions.y / 2);
-
-                for (var j = visibleTiles.length - 1; j >= 0; j--) {
-                    var tile = visibleTiles[j];
-                    if (!validTileKeys[tile.id]) {
-                        layer.removeChild(tile);
-                    } else {
-                        // position tiles
-                        MM.moveElement(tile, {
-                            x: Math.round(center.x +
-                                (tile.coord.column - theCoord.column) * tileWidth),
-                            y: Math.round(center.y +
-                                (tile.coord.row - theCoord.row) * tileHeight),
-                            scale: scale,
-                            width:  this.provider.tileWidth,
-                            height: this.provider.tileHeight
-                        });
-                        // log last-touched-time of currently cached tiles
-                        this.recentTilesById[tile.id].lastTouchedTime = now;
-                    }
+                    // the issue can only be corrected with setSize
+                    return;
                 }
             }
 
-            // cancel requests that aren't visible:
-            this.requestManager.clearExcept(validTileKeys);
-
-            // get newly requested tiles, sort according to current view:
-            this.requestManager.processQueue(this.getCenterDistanceCompare());
-
-            // make sure we don't have too much stuff:
-            this.checkCache();
+            // draw layers one by one
+            for(var i = 0; i < this.layers.length; i++) {
+                this.layers[i].draw();
+            }
 
             this.dispatchCallback('drawn');
         },
-
-        _tileComplete: null,
-
-        getTileComplete: function() {
-            if (!this._tileComplete) {
-                var theMap = this;
-                this._tileComplete = function(manager, tile) {
-
-                    // cache the tile itself:
-                    theMap.tiles[tile.id] = tile;
-                    theMap.tileCacheSize++;
-
-                    // also keep a record of when we last touched this tile:
-                    var record = {
-                        id: tile.id,
-                        lastTouchedTime: new Date().getTime()
-                    };
-                    theMap.recentTilesById[tile.id] = record;
-                    theMap.recentTiles.push(record);
-
-                    var theCoord = theMap.coordinate.zoomTo(tile.coord.zoom);
-                    var scale = Math.pow(2, theMap.coordinate.zoom - tile.coord.zoom);
-                    var tx = ((theMap.dimensions.x / 2) +
-                        (tile.coord.column - theCoord.column) * theMap.provider.tileWidth * scale);
-                    var ty = ((theMap.dimensions.y / 2) +
-                        (tile.coord.row - theCoord.row) * theMap.provider.tileHeight * scale);
-
-                    MM.moveElement(tile, {
-                        x: Math.round(tx),
-                        y: Math.round(ty),
-                        scale: scale,
-                        // TODO: pass only scale or only w/h
-                        width: theMap.provider.tileWidth,
-                        height: theMap.provider.tileHeight
-                    });
-
-                    // Support style transition if available.
-                    // add tile to its layer
-                    var theLayer = theMap.layers[tile.coord.zoom];
-                    theLayer.appendChild(tile);
-                    tile.className = 'map-tile-loaded';
-
-                    // ensure the layer is visible if it's still the current layer
-                    if (Math.round(theMap.coordinate.zoom) === tile.coord.zoom) {
-                        theLayer.style.display = 'block';
-                    }
-
-                    // request a lazy redraw of all layers
-                    // this will remove tiles that were only visible
-                    // to cover this tile while it loaded:
-                    theMap.requestRedraw();
-                };
-            }
-            return this._tileComplete;
-        },
-
 
         _redrawTimer: undefined,
 
@@ -1968,75 +2683,51 @@ if (!com) {
             return this._redraw;
         },
 
-        createOrGetLayer: function(zoom) {
-            if (zoom in this.layers) {
-                return this.layers[zoom];
+        // Attempts to destroy all attachment a map has to a page
+        // and clear its memory usage.
+        destroy: function() {
+            for (var j = 0; j < this.layers.length; j++) {
+                this.layers[j].destroy();
             }
-            //console.log('creating layer ' + zoom);
-            var layer = document.createElement('div');
-            layer.id = this.parent.id + '-zoom-' + zoom;
-            layer.style.cssText = this.layerParent.style.cssText;
-            layer.style.zIndex = zoom;
-            this.layerParent.appendChild(layer);
-            this.layers[zoom] = layer;
-            return layer;
-        },
-
-        // keeps cache below max size
-        // (called every time we receive a new tile and add it to the cache)
-        checkCache: function() {
-            var numTilesOnScreen = this.parent.getElementsByTagName('img').length;
-            var maxTiles = Math.max(numTilesOnScreen, this.maxTileCacheSize);
-            if (this.tileCacheSize > maxTiles) {
-                // sort from newest (highest) to oldest (lowest)
-                this.recentTiles.sort(function(t1, t2) {
-                    return t2.lastTouchedTime < t1.lastTouchedTime ?
-                        -1 :
-                        t2.lastTouchedTime > t1.lastTouchedTime ? 1 : 0;
-                });
+            this.layers = [];
+            this.projection = null;
+            for (var i = 0; i < this.eventHandlers.length; i++) {
+                this.eventHandlers[i].remove();
             }
-            while (this.tileCacheSize > maxTiles) {
-                // delete the oldest record
-                var tileRecord = this.recentTiles.pop();
-                var now = new Date().getTime();
-                delete this.recentTilesById[tileRecord.id];
-                /*window.console.log('removing ' + tileRecord.id +
-                                   ' last seen ' + (now-tileRecord.lastTouchedTime) + 'ms ago'); */
-                // now actually remove it from the cache...
-                var tile = this.tiles[tileRecord.id];
-                if (tile.parentNode) {
-                    // I'm leaving this uncommented for now but you should never see it:
-                    alert("Gah: trying to removing cached tile even though it's still in the DOM");
-                } else {
-                    delete this.tiles[tileRecord.id];
-                    this.tileCacheSize--;
-                }
+            if (this.autoSize) {
+                MM.removeEvent(window, 'resize', this.windowResize());
             }
-        },
-
-        // Compares manhattan distance from center of
-        // requested tiles to current map center
-        // NB:- requested tiles are *popped* from queue, so we do a descending sort
-        getCenterDistanceCompare: function() {
-            var theCoord = this.coordinate.zoomTo(Math.round(this.coordinate.zoom));
-            return function(r1, r2) {
-                if (r1 && r2) {
-                    var c1 = r1.coord;
-                    var c2 = r2.coord;
-                    if (c1.zoom == c2.zoom) {
-                        var ds1 = Math.abs(theCoord.row - c1.row - 0.5) +
-                                  Math.abs(theCoord.column - c1.column - 0.5);
-                        var ds2 = Math.abs(theCoord.row - c2.row - 0.5) +
-                                  Math.abs(theCoord.column - c2.column - 0.5);
-                        return ds1 < ds2 ? 1 : ds1 > ds2 ? -1 : 0;
-                    }
-                    else {
-                        return c1.zoom < c2.zoom ? 1 : c1.zoom > c2.zoom ? -1 : 0;
-                    }
-                }
-                return r1 ? 1 : r2 ? -1 : 0;
-            };
         }
+    };
+    // Instance of a map intended for drawing to a div.
+    //
+    //  * `parent` (required DOM element)
+    //      Can also be an ID of a DOM element
+    //  * `provider` (required MM.MapProvider or URL template)
+    //  * `location` (required MM.Location)
+    //      Location for map to show
+    //  * `zoom` (required number)
+    MM.mapByCenterZoom = function(parent, layerish, location, zoom) {
+        var layer = MM.coerceLayer(layerish),
+            map = new MM.Map(parent, layer, false);
+        map.setCenterZoom(location, zoom).draw();
+        return map;
+    };
+
+    // Instance of a map intended for drawing to a div.
+    //
+    //  * `parent` (required DOM element)
+    //      Can also be an ID of a DOM element
+    //  * `provider` (required MM.MapProvider or URL template)
+    //  * `locationA` (required MM.Location)
+    //      Location of one map corner
+    //  * `locationB` (required MM.Location)
+    //      Location of other map corner
+    MM.mapByExtent = function(parent, layerish, locationA, locationB) {
+        var layer = MM.coerceLayer(layerish),
+            map = new MM.Map(parent, layer, false);
+        map.setExtent([locationA, locationB]).draw();
+        return map;
     };
     if (typeof module !== 'undefined' && module.exports) {
       module.exports = {
@@ -2047,8 +2738,9 @@ if (!com) {
           Transformation: MM.Transformation,
           Location: MM.Location,
           MapProvider: MM.MapProvider,
-          TemplatedMapProvider: MM.TemplatedMapProvider,
-          Coordinate: MM.Coordinate
+          Template: MM.Template,
+          Coordinate: MM.Coordinate,
+          deriveTransformation: MM.deriveTransformation
       };
     }
-})(com.modestmaps);
+})(MM);
