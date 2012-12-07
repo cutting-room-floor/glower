@@ -6,8 +6,8 @@ if (!glower) throw new Error('glower base library required');
         options = options || {};
 
         var MM = com.modestmaps,
-            waxGM = wax.GridManager(tj),
-            eventoffset = wax.util.eventoffset,
+            waxGM = wax.gm(),
+            eventoffset = wax.u.eventoffset,
             addEvent = MM.addEvent,
             removeEvent = MM.removeEvent,
             g = {},
@@ -21,17 +21,19 @@ if (!glower) throw new Error('glower base library required');
             _downLock = false,
             tileGrid, c, ctx;
 
+        waxGM.tilejson(tj);
+
         hovertiles.style.cssText = 'position:absolute;top:0;left:0;';
 
         function getTileGrid() {
-            var zoomLayer = map.createOrGetLayer(Math.round(map.getZoom()));
-            var mo = wax.util.offset(map.parent);
+            var zoomLayer = map.layers[0].createOrGetLevel(Math.round(map.getZoom()));
+            var mo = wax.u.offset(map.parent);
             return tileGrid || (tileGrid =
                 (function(t) {
                     var o = [];
                     for (var key in t) {
                         if (t[key].parentNode === zoomLayer) {
-                            var offset = wax.util.offset(t[key]);
+                            var offset = wax.u.offset(t[key]);
                             var mapoffset = {
                                 left: offset.left - mo.left,
                                 top: offset.top - mo.top
@@ -40,7 +42,7 @@ if (!glower) throw new Error('glower base library required');
                         }
                     }
                     return o;
-                })(map.tiles));
+                })(map.layers[0].tiles));
         }
 
         // When the map moves, the tile grid is no longer valid.
@@ -70,7 +72,7 @@ if (!glower) throw new Error('glower base library required');
                         if (err || !g.grid_tile()) {
                           return;
                         }
-                        var keyIndex = wax.util.indexOf(g.grid_tile().keys, key);
+                        var keyIndex = wax.u.indexOf(g.grid_tile().keys, key);
                         if (keyIndex !== -1) {
                             var ch = String.fromCharCode(lib.indexToChar(keyIndex));
 
